@@ -21,6 +21,7 @@
 #include "q4kp/q4kp_kernel.h"
 #include "q4kp/q4kp_runtime.h"
 #include "q4kp/q4kp_vnni_kernel.h"
+#include "q4kp/q4kp_vnni_gemm.h"
 #include "q4kp/q4kp_wide_kernel.h"
 #include <atomic>
 #include <cstdlib>
@@ -55,6 +56,14 @@ static void q4kp_dispatch_gemv(int n, float *s, size_t bs, const void *x, const 
         case 3: q4kp_wide_gemv(n, s, bs, x, y, nr, nc); break;
         case 2: q4kp_vnni_gemv(n, s, bs, x, y, nr, nc); break;
         default: q4kp_gemv(n, s, bs, x, y, nr, nc); break;
+    }
+}
+static void q4kp_dispatch_gemm(int n, float *s, size_t bs, const void *x, const void *y, int nr, int nc) {
+    // Both modes have already passed the VNNI ISA gate in q4kp_mode().
+    if (q4kp_mode() >= 2) {
+        q4kp_vnni_gemm(n, s, bs, x, y, nr, nc);
+    } else {
+        q4kp_gemm(n, s, bs, x, y, nr, nc);
     }
 }
 extern "C" uint64_t q4kp_runtime_stat(int index) {
@@ -4321,7 +4330,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
         if (nrows > 3) {
 #ifdef GGML_CPU_Q4KP
         if constexpr (Q4KP) {
-                q4kp_gemm(ne00,(float *)dst_ptr+src0_start,nb1/nb0,
+                q4kp_dispatch_gemm(ne00,(float *)dst_ptr+src0_start,nb1/nb0,
                     src0_ptr+src0_start*nb01,src1_ptr,nrows-(nrows%4),ncols);
             } else
 #endif

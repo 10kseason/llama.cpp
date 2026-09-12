@@ -1,0 +1,51 @@
+#version 450
+
+// Runtime-only 42-byte layout: FP16 scale + 24 support bytes + 16 sign bytes.
+// The original 39-byte GGUF remains unchanged. No shader Int64 capability.
+// The workgroup and FP32 accumulation order match the compact39 shader.
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(set = 0, binding = 0, std430) readonly buffer Weights { uint words[]; } w;
+layout(set = 0, binding = 1, std430) readonly buffer Inputs { float values[]; } x;
+layout(set = 0, binding = 2, std430) writeonly buffer Outputs { float values[]; } y;
+layout(push_constant) uniform Shape { uint rows; uint columns; uint inputs; uint output_stride; } shape;
+shared float partials[32];
+
+uint byte_at(uint offset) {
+    return (w.words[offset / 4] >> ((offset % 4) * 8)) & 255u;
+}
+
+void main() {
+    uint row = gl_WorkGroupID.x;
+    uint input_index = gl_WorkGroupID.y;
+    uint lane = gl_LocalInvocationID.x;
+    uint blocks = shape.columns / 256;
+    precise float total = 0.0;
+    const uvec2 pairs[6] = uvec2[6](uvec2(0, 1), uvec2(0, 2), uvec2(0, 3),
+                                          uvec2(1, 2), uvec2(1, 3), uvec2(2, 3));
+    for (uint item = lane; item < blocks * 4; item += 32) {
+        uint block = item / 4;
+        uint slot = item % 4;
+        uint base = (row * blocks + block) * 42;
+        float scale = unpackHalf2x16(byte_at(base) | (byte_at(base + 1) << 8)).x;
+        for (uint digit = 0; digit < 16; ++digit) {
+            uint group = slot * 16 + digit;
+            uint bit = group * 3;
+            uint code_bytes = byte_at(base + 2 + bit / 8) | (byte_at(base + 3 + bit / 8) << 8);
+            uint mask = (code_bytes >> (bit % 8)) & 7u;
+            uint signs = byte_at(base + 26 + (group * 2) / 8) >> ((group * 2) % 8);
+            uint column = input_index * shape.columns + block * 256 + group * 4;
+            float first = (signs & 1u) != 0 ? scale : -scale;
+            float second = (signs & 2u) != 0 ? scale : -scale;
+            total += first * x.values[column + pairs[mask].x];
+            total += second * x.values[column + pairs[mask].y];
+        }
+    }
+    partials[lane] = total;
+    barrier();
+    for (uint width = 16; width > 0; width /= 2) {
+        if (lane < width) partials[lane] += partials[lane + width];
+        barrier();
+    }
+    // Eight leading/trailing NaNs per input are host-side output guards.
+    if (lane == 0) y.values[input_index * shape.output_stride + 8 + row] = partials[0];
+}

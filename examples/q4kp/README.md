@@ -20,7 +20,7 @@ cmake -S . -B build-q4kp -G Ninja \
 cmake --build build-q4kp --target llama-completion llama-bench -j 4
 ```
 
-On PowerShell, enter the configure command on one line, or use PowerShell's continuation syntax. For MinGW, add `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ "-DCMAKE_C_FLAGS=-pipe -D_WIN32_WINNT=0x0A00" "-DCMAKE_CXX_FLAGS=-pipe -D_WIN32_WINNT=0x0A00"`. The Windows target version makes `CreateFile2` available to the current upstream HTTP library. Put build and temporary directories on a writable drive. Do not enable AVX-512 globally: only the VNNI/wide functions use those instructions after the runtime checks.
+On PowerShell, enter the configure command on one line, or use PowerShell's continuation syntax. For MinGW, add `-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ "-DCMAKE_C_FLAGS=-pipe -D_WIN32_WINNT=0x0A00" "-DCMAKE_CXX_FLAGS=-pipe -D_WIN32_WINNT=0x0A00"`. The Windows target version makes `CreateFile2` available to the current upstream HTTP library. Put build and temporary directories on a writable drive. Within this experimental build, do not enable AVX-512 globally: only the VNNI/wide functions use those instructions after the runtime checks. A separate performance baseline should use the best supported original backend configuration.
 
 ## Run
 
@@ -30,10 +30,12 @@ Set `GGML_Q4KP` before starting a new process:
 | --- | --- |
 | unset / `off` | Original CPU repacking and kernels |
 | `p6` | P6 layout with AVX2 GEMV/GEMM |
-| `vnni` | P6 with 256-bit AVX-512 VNNI GEMV; P6 GEMM |
-| `wide` | Experimental 512-bit GEMV; P6 GEMM |
+| `vnni` | P6 with 256-bit AVX-512 VNNI GEMV and GEMM |
+| `wide` | Experimental 512-bit GEMV; the same 256-bit VNNI GEMM as `vnni` |
 
 Unsupported VNNI falls back to P6. Unsupported wide falls back to VNNI when available, then P6. An unknown value prints a warning and disables the experiment. The mode is fixed on first use; restart the process to change it.
+
+VNNI GEMM uses `dpbusd` and int32 scale multiplication in both the 16-row body and 4-row tail. It preserves the AVX2 path's FP32 FMA order and minimum correction. There is no 512-bit GEMM variant.
 
 ```sh
 GGML_Q4KP=vnni ./build-q4kp/bin/llama-completion -m /path/to/model.gguf -ngl 0 -p "Hello" -n 64
@@ -59,9 +61,25 @@ cmake --build build-q4kp --target test-q4kp-kernels test-q4kp-runtime -j 4
 ctest --test-dir build-q4kp -R '^q4kp-' --output-on-failure
 ```
 
-The kernel suite compares the freshly built original AVX2 implementation, P6, supported VNNI/wide kernels and an independent scalar oracle bit for bit. It exercises six-bit metadata round trips, Q8 and nibble extrema, finite FP16 edge values, both GEMM branches, row tails, output guards and invalid arguments. Tests for unavailable VNNI/wide instructions report a skip. Runtime checks cover allocation size, tensor/view ownership, repeated loading and canonical Q4_K graph calculations.
+The kernel suite compares the freshly built original AVX2 implementation, P6, supported VNNI/wide kernels and an independent scalar oracle bit for bit. It exercises six-bit metadata round trips, Q8 and nibble extrema, finite FP16 edge values, both AVX2 and VNNI GEMM branches, row tails, a 512-row prompt batch, output guards and invalid arguments. Tests for unavailable VNNI/wide instructions report a skip. Runtime checks cover allocation size, tensor/view ownership, repeated loading and canonical Q4_K graph calculations.
 
 These checks establish implementation equivalence within the tested AVX2 configuration. They do not certify every model, backend, compiler or task accuracy. GPU arithmetic and globally enabled AVX-512 kernels have separate numerical behavior.
+
+## Measure performance and confirm dispatch
+
+With the test configuration above and `LLAMA_BUILD_TOOLS=ON`, build `q4kp-bench`. It accepts the same arguments as `llama-bench`, keeps the requested benchmark format on stdout, and appends a `Q4KP_STATS` line to stderr after the benchmark returns:
+
+```sh
+cmake -S . -B build-q4kp -DLLAMA_BUILD_TESTS=ON -DLLAMA_BUILD_TOOLS=ON
+cmake --build build-q4kp --target q4kp-bench -j 4
+GGML_Q4KP=vnni ./build-q4kp/bin/q4kp-bench -m /path/to/model.gguf -ngl 0 -t 4 -p 512 -n 128 -r 1 -o json > vnni.json 2> vnni.log
+```
+
+On PowerShell, set `$env:GGML_Q4KP = 'vnni'` first and run `./build-q4kp/bin/q4kp-bench.exe` with the same arguments. The stats line has fields `enabled`, `tensors`, `metadata_bytes` and `matrix_ops`. Counters are cumulative for the process, including warmups and repeated runs; `metadata_bytes` counts bytes recoded in place, not extra memory or bytes read during inference. Check `tensors` and `matrix_ops` are nonzero before attributing a result to these kernels. `enabled=1` alone does not show that the model had eligible tensors. Stderr also contains normal backend logs and any ISA fallback warning.
+
+Use fresh processes for interleaved `off` / `p6` / `vnni` runs at 2, 4 and 8 threads, with at least five repetitions and recorded dispersion. Compare prompt processing and token generation separately. Also compare with a separate `GGML_CPU_Q4KP=OFF` build using the original backend's best supported ISA configuration; the fixed AVX2 correctness build is not an optimized upstream performance baseline.
+
+P6 and VNNI still read the same 1152-byte weight blocks. They do not reduce model size or weight traffic, so bandwidth-bound token generation may see little benefit. The [LFM2.5-2.6B benchmark](BENCHMARKS.md) records five interleaved repetitions per mode and thread count against a separate native/AVX512/VNNI original build. At four threads on the tested 7800X3D, VNNI improved pp512 by 20.3%; tg128 differed by only +1.0%. This does not establish the same result on other hardware.
 
 ## Layout and maintenance
 

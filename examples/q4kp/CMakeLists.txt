@@ -11,7 +11,8 @@ set(Q4KP_FLAGS -mavx2 -mbmi2 -mfma -mf16c)
 # The ctypes test library links the static backend on ELF platforms.
 set_target_properties(ggml-cpu ggml-base PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(test-q4kp-kernels SHARED oracle.cpp
-    ${Q4KP_DIR}/q4kp_kernel.cpp ${Q4KP_DIR}/q4kp_vnni_kernel.cpp ${Q4KP_DIR}/q4kp_wide_kernel.cpp)
+    ${Q4KP_DIR}/q4kp_kernel.cpp ${Q4KP_DIR}/q4kp_vnni_kernel.cpp
+    ${Q4KP_DIR}/q4kp_vnni_gemm.cpp ${Q4KP_DIR}/q4kp_wide_kernel.cpp)
 set_target_properties(test-q4kp-kernels PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 add_executable(test-q4kp-runtime test-runtime.cpp)
 foreach(target test-q4kp-kernels test-q4kp-runtime)
@@ -23,6 +24,12 @@ foreach(target test-q4kp-kernels test-q4kp-runtime)
     target_compile_definitions(${target} PRIVATE GGML_CPU_Q4KP)
     target_link_libraries(${target} PRIVATE ggml-cpu)
 endforeach()
+
+if (TARGET llama-bench-impl)
+    add_executable(q4kp-bench bench-main.cpp)
+    target_include_directories(q4kp-bench PRIVATE "${Q4KP_DIR}")
+    target_link_libraries(q4kp-bench PRIVATE llama-bench-impl ggml-cpu)
+endif()
 
 get_filename_component(Q4KP_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
 add_test(NAME q4kp-kernels COMMAND "${CMAKE_COMMAND}" -E env

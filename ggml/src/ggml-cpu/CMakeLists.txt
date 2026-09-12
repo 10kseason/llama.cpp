@@ -73,6 +73,7 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
         list(APPEND GGML_CPU_SOURCES
             ggml-cpu/q4kp/q4kp_kernel.cpp
             ggml-cpu/q4kp/q4kp_vnni_kernel.cpp
+            ggml-cpu/q4kp/q4kp_vnni_gemm.cpp
             ggml-cpu/q4kp/q4kp_wide_kernel.cpp)
         target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_CPU_Q4KP)
     endif()
