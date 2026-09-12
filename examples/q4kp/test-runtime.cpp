@@ -41,6 +41,10 @@ static void graph_checks() {
                                  0, 24, n, nullptr) == canonical.size(), "canonical quantization size");
                     ggml_backend_tensor_set(w, canonical.data(), 0, canonical.size());
                     ggml_backend_tensor_set(ref, canonical.data(), 0, canonical.size());
+                    if(q4kp_runtime_mode()==4) {
+                        require_test(std::memcmp(w->data, ref->data, ggml_nbytes(w))==0, "original layout unchanged after upload");
+                        require_test(q4kp_runtime_stat(0)==0 && q4kp_runtime_stat(1)==0, "original mode never recodes metadata");
+                    }
                     auto *wv = w;
                     auto *rv = ref;
                     if (view) {
@@ -70,6 +74,7 @@ static void graph_checks() {
 }
 int main() {
     const bool enabled=q4kp_runtime_enabled();
+    const bool recoded=enabled && q4kp_runtime_mode()!=4;
     require_test(__builtin_cpu_supports("bmi2") && ggml_cpu_has_avx2() &&
         ggml_cpu_has_fma() && ggml_cpu_has_f16c(),"required test CPU features");
     ggml_init_params p={1024*1024,nullptr,true};
@@ -84,9 +89,10 @@ int main() {
     require_test(q4kp_has_layout(w)==enabled,"explicit owned layout");
     std::vector<uint8_t> original(ggml_nbytes(w),0);
     ggml_backend_tensor_set(w,original.data(),0,original.size());
-    require_test(q4kp_runtime_stat(0)==uint64_t(enabled),"one conversion recorded");
-    require_test(q4kp_runtime_stat(1)==uint64_t(enabled?192:0),"in-place byte accounting");
+    require_test(q4kp_runtime_stat(0)==uint64_t(recoded),"one conversion recorded");
+    require_test(q4kp_runtime_stat(1)==uint64_t(recoded?192:0),"in-place byte accounting");
     require_test(q4kp_runtime_stat(3)==0,"no extra allocation");
+    require_test(q4kp_runtime_stat(4)==uint64_t(enabled),"selected tensor recorded independently of recode");
     auto *v=ggml_view_2d(ctx,w,256,8,w->nb[1],8*w->nb[1]);
     require_test(!q4kp_eligible(v),"views never independently recoded");
     require_test(ggml_backend_view_init(v)==GGML_STATUS_SUCCESS,"aligned view initialized");
@@ -111,5 +117,5 @@ int main() {
     require_test(q4kp_runtime_stat(2)==0,"no inference during allocation tests");
     ggml_backend_buffer_free(buffer);ggml_free(ctx);
     graph_checks();
-    std::printf("PASS: %d layout/allocation/view/graph checks, mode=%d\n",checks,int(enabled));
+    std::printf("PASS: %d layout/allocation/view/graph checks, mode=%d\n",checks,q4kp_runtime_mode());
 }

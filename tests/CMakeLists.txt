@@ -1,5 +1,18 @@
 llama_add_compile_flags()
 
+# No model or device is required for the private compact/Direct42 contract.
+add_executable(test-s24-codec test-s24-codec.cpp)
+target_include_directories(test-s24-codec PRIVATE ${PROJECT_SOURCE_DIR}/ggml/src)
+target_link_libraries(test-s24-codec PRIVATE ggml-base)
+add_test(NAME test-s24-codec COMMAND test-s24-codec)
+
+if (GGML_CPU AND NOT GGML_BACKEND_DL AND (NOT WIN32 OR NOT BUILD_SHARED_LIBS))
+    add_executable(test-s24-loader test-s24-loader.cpp)
+    target_include_directories(test-s24-loader PRIVATE ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/ggml/src)
+    target_link_libraries(test-s24-loader PRIVATE llama ggml-cpu)
+    add_test(NAME test-s24-loader COMMAND test-s24-loader)
+endif()
+
 function(llama_build source)
     set(TEST_SOURCES ${source} ${ARGN})
 

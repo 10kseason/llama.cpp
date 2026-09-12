@@ -1,0 +1,961 @@
+{
+  "status": "MEASURED",
+  "model": "LFM2.5-2.6B Q4_K_M",
+  "model_bytes": 1674455104,
+  "model_sha256": "814544faffbb4a767dda73e7ea83c11fbad816787dd63a5e8ae45955e96380a6",
+  "executable_sha256": "8f89e6ec22037cb1d30b1db1e845dca3038f97a0a8fe874af2492a2d57f2f7c6",
+  "runner_sha256": "329d2f17b16958933b216a1efa5c2923b63f3d41ba86bcbb0ebc8b20bea66858",
+  "workload": {
+    "prompt": 512,
+    "generate": 128,
+    "threads": 4,
+    "batch": 512,
+    "ubatch": 512,
+    "gpu_layers": 0,
+    "flash_attention": 0,
+    "repetitions": 5
+  },
+  "records": [
+    {
+      "repetition": 0,
+      "mode": "off",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6184742900,
+      "tps": 82.78436279056967,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "off",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4080232800,
+      "tps": 31.37075904100374,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6421004000,
+      "tps": 79.73830883768333,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4229262100,
+      "tps": 30.26532689946078,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4028648200,
+      "tps": 127.08977666503618,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4102406400,
+      "tps": 31.20119937410394,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 3913950900,
+      "tps": 130.81410908859382,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 0,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4133784600,
+      "tps": 30.96436132642228,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 5974042600,
+      "tps": 85.70410930782448,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4072401800,
+      "tps": 31.431083249201983,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4329175700,
+      "tps": 118.26731818715513,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4129297300,
+      "tps": 30.998010242565968,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4319037700,
+      "tps": 118.54492494937008,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4280445300,
+      "tps": 29.903430841646312,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "off",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 7056898400,
+      "tps": 72.55312050404467,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 1,
+      "mode": "off",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4721061000,
+      "tps": 27.112549488345945,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4698491900,
+      "tps": 108.97113603622473,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4227179300,
+      "tps": 30.28023911831703,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4047959700,
+      "tps": 126.48347264919659,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4361616800,
+      "tps": 29.34691557497669,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "off",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 5973720000,
+      "tps": 85.70873760403903,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "off",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4214502800,
+      "tps": 30.371316872775598,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6131860200,
+      "tps": 83.4983158944165,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 2,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4436339200,
+      "tps": 28.852617942288994,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4689863700,
+      "tps": 109.17161622415594,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4410279900,
+      "tps": 29.023101232191635,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "off",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6699280500,
+      "tps": 76.42611770025154,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "off",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4386288400,
+      "tps": 29.181847686987478,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6652595400,
+      "tps": 76.96244386063219,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4369470000,
+      "tps": 29.29417068889362,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4547366400,
+      "tps": 112.5926426337671,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 3,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4358211900,
+      "tps": 29.36984316893816,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "off",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6698096900,
+      "tps": 76.43962272328429,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "off",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4353873400,
+      "tps": 29.399109308047404,
+      "dispatch": {
+        "enabled": 0,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 0,
+        "selected_tensors": 0,
+        "mode": 0
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 6548566200,
+      "tps": 78.18505369923572,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "p6",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4389433200,
+      "tps": 29.160940414812554,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 1
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4649651600,
+      "tps": 110.11577727673188,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "vnni-original",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4390644100,
+      "tps": 29.152898090737985,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 0,
+        "metadata_bytes": 0,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 4
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "pp",
+      "tokens": 512,
+      "ns": 4304532400,
+      "tps": 118.94439451774134,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    },
+    {
+      "repetition": 4,
+      "mode": "vnni",
+      "threads": 4,
+      "phase": "tg",
+      "tokens": 128,
+      "ns": 4424642800,
+      "tps": 28.928888903755123,
+      "dispatch": {
+        "enabled": 1,
+        "tensors": 148,
+        "metadata_bytes": 99483648,
+        "matrix_ops": 19388,
+        "selected_tensors": 148,
+        "mode": 2
+      }
+    }
+  ],
+  "summary": [
+    {
+      "phase": "pp",
+      "mode": "off",
+      "n": 5,
+      "aggregate_tps": 78.4969340829999,
+      "mean_tps": 78.78239226443785,
+      "sd_tps": 5.334661504375489,
+      "mean_ns": 6522547740,
+      "sd_ns": 436722624.2128097,
+      "min_tps": 72.55312050404467,
+      "max_tps": 85.70873760403903
+    },
+    {
+      "phase": "pp",
+      "mode": "p6",
+      "n": 5,
+      "aggregate_tps": 80.68565560707124,
+      "mean_tps": 80.81764631995844,
+      "sd_tps": 3.6749697008592035,
+      "mean_ns": 6345613680,
+      "sd_ns": 284985446.9278598,
+      "min_tps": 76.96244386063219,
+      "max_tps": 85.70410930782448
+    },
+    {
+      "phase": "pp",
+      "mode": "vnni-original",
+      "n": 5,
+      "aggregate_tps": 115.03894306389275,
+      "mean_tps": 115.407330159783,
+      "sd_tps": 7.4499443025464345,
+      "mean_ns": 4450666760,
+      "sd_ns": 275328362.8625881,
+      "min_tps": 108.97113603622473,
+      "max_tps": 127.08977666503618
+    },
+    {
+      "phase": "pp",
+      "mode": "vnni",
+      "n": 5,
+      "aggregate_tps": 120.32707682043446,
+      "mean_tps": 120.79170348581155,
+      "sd_tps": 8.311616005022127,
+      "mean_ns": 4255068880,
+      "sd_ns": 297842606.9089881,
+      "min_tps": 109.17161622415594,
+      "max_tps": 130.81410908859382
+    },
+    {
+      "phase": "tg",
+      "mode": "off",
+      "n": 5,
+      "aggregate_tps": 29.417228523474286,
+      "mean_tps": 29.487116479432032,
+      "sd_tps": 1.5866176546638968,
+      "mean_ns": 4351191680,
+      "sd_ns": 239867072.46967435,
+      "min_tps": 27.112549488345945,
+      "max_tps": 31.37075904100374
+    },
+    {
+      "phase": "tg",
+      "mode": "p6",
+      "n": 5,
+      "aggregate_tps": 29.77172580409861,
+      "mean_tps": 29.800827838931585,
+      "sd_tps": 1.0534172334917495,
+      "mean_ns": 4299381260,
+      "sd_ns": 148505582.8602009,
+      "min_tps": 28.852617942288994,
+      "max_tps": 31.431083249201983
+    },
+    {
+      "phase": "tg",
+      "mode": "vnni-original",
+      "n": 5,
+      "aggregate_tps": 30.17766297482254,
+      "mean_tps": 30.200437998932617,
+      "sd_tps": 0.926180417545372,
+      "mean_ns": 4241547800,
+      "sd_ns": 130390928.21105309,
+      "min_tps": 29.152898090737985,
+      "max_tps": 31.20119937410394
+    },
+    {
+      "phase": "tg",
+      "mode": "vnni",
+      "n": 5,
+      "aggregate_tps": 29.614864151944538,
+      "mean_tps": 29.63333957579841,
+      "sd_tps": 0.835949831945383,
+      "mean_ns": 4322153880,
+      "sd_ns": 119425800.67982379,
+      "min_tps": 28.928888903755123,
+      "max_tps": 30.96436132642228
+    }
+  ],
+  "contrasts": [
+    {
+      "phase": "pp",
+      "contrast": "P6_at_AVX2",
+      "numerator": "p6",
+      "denominator": "off",
+      "gain_percent": 2.788289185609538,
+      "paired_gain_percent": [
+        -3.6795040152599046,
+        18.126014032775718,
+        -2.5789922607824756,
+        0.7017576929449154,
+        2.2834112908562965
+      ],
+      "paired_mean_percent": 2.9705373481069097,
+      "paired_sd_percent": 8.808068827731184
+    },
+    {
+      "phase": "pp",
+      "contrast": "P6_at_VNNI",
+      "numerator": "vnni",
+      "denominator": "vnni-original",
+      "gain_percent": 4.59682053372541,
+      "paired_gain_percent": [
+        2.9304736551498234,
+        0.23472821272201294,
+        16.070619477758143,
+        -3.03841026339422,
+        8.017577007899845
+      ],
+      "paired_mean_percent": 4.842997618027121,
+      "paired_sd_percent": 7.469068414827515
+    },
+    {
+      "phase": "pp",
+      "contrast": "VNNI_on_original",
+      "numerator": "vnni-original",
+      "denominator": "off",
+      "gain_percent": 46.55214806511374,
+      "paired_gain_percent": [
+        53.519061306966464,
+        63.007900095161304,
+        27.141221633264912,
+        47.322206101536054,
+        44.05588797233753
+      ],
+      "paired_mean_percent": 47.009255421853254,
+      "paired_sd_percent": 13.246634365838776
+    },
+    {
+      "phase": "pp",
+      "contrast": "VNNI_on_P6",
+      "numerator": "vnni",
+      "denominator": "p6",
+      "gain_percent": 49.13069233323435,
+      "paired_gain_percent": [
+        64.05428080357368,
+        38.31883430885543,
+        51.48026794831975,
+        41.850506231129934,
+        52.131883128583254
+      ],
+      "paired_mean_percent": 49.567154484092406,
+      "paired_sd_percent": 10.077028730832302
+    },
+    {
+      "phase": "pp",
+      "contrast": "combined_vs_AVX2",
+      "numerator": "vnni",
+      "denominator": "off",
+      "gain_percent": 53.288887299986555,
+      "paired_gain_percent": [
+        58.01789695420043,
+        63.390525625650355,
+        47.573603561320034,
+        42.8459530710882,
+        55.605679724933644
+      ],
+      "paired_mean_percent": 53.486731787438536,
+      "paired_sd_percent": 8.235559902473952
+    },
+    {
+      "phase": "tg",
+      "contrast": "P6_at_AVX2",
+      "numerator": "p6",
+      "denominator": "off",
+      "gain_percent": 1.2050668890899896,
+      "paired_gain_percent": [
+        -3.5237660016389283,
+        15.928172902781856,
+        -5.000438199134994,
+        0.38490709399536804,
+        -0.8101228195020682
+      ],
+      "paired_mean_percent": 1.395750595300247,
+      "paired_sd_percent": 8.399283524070222
+    },
+    {
+      "phase": "tg",
+      "contrast": "P6_at_VNNI",
+      "numerator": "vnni",
+      "denominator": "vnni-original",
+      "gain_percent": -1.864951647672486,
+      "paired_gain_percent": [
+        -0.7590671270099492,
+        -3.531127941291523,
+        -3.0822859082897947,
+        -1.1806053398107474,
+        -0.7683942306031977
+      ],
+      "paired_mean_percent": -1.8642961094010424,
+      "paired_sd_percent": 1.3371417843569644
+    },
+    {
+      "phase": "tg",
+      "contrast": "VNNI_on_original",
+      "numerator": "vnni-original",
+      "denominator": "off",
+      "gain_percent": 2.5849969202280443,
+      "paired_gain_percent": [
+        -0.5405022769075285,
+        14.330857213889647,
+        -0.29988082123698634,
+        0.6442206263536532,
+        -0.8374784920508582
+      ],
+      "paired_mean_percent": 2.6594432500095855,
+      "paired_sd_percent": 6.548067236657327
+    },
+    {
+      "phase": "tg",
+      "contrast": "VNNI_on_P6",
+      "numerator": "vnni",
+      "denominator": "p6",
+      "gain_percent": -0.5268812872530226,
+      "paired_gain_percent": [
+        2.309687350424605,
+        -4.860323761175033,
+        1.7131812221559573,
+        -0.9253358273247025,
+        -0.7957614115200462
+      ],
+      "paired_mean_percent": -0.5117104854878439,
+      "paired_sd_percent": 2.831635443198236
+    },
+    {
+      "phase": "tg",
+      "contrast": "combined_vs_AVX2",
+      "numerator": "vnni",
+      "denominator": "off",
+      "gain_percent": 0.6718363298994667,
+      "paired_gain_percent": [
+        -1.2954666288127359,
+        10.293688369291853,
+        -3.3729235452321316,
+        -0.5439904165719711,
+        -1.5994375862385946
+      ],
+      "paired_mean_percent": 0.6963740384872841,
+      "paired_sd_percent": 5.464529015172363
+    }
+  ],
+  "unchanged_artifacts": true
+}

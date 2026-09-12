@@ -2,7 +2,9 @@
 // ggml_gemm_q4_K_8x8_q8_K in ggml-cpu/arch/x86/repack.cpp (MIT license).
 // Both the 16-row body and 4-row tail preserve the original FP32 FMA order.
 // This experimental variant changes only the integer dot/scale stage to VNNI.
+#include "q4kp_impl.h"
 #include "q4kp_vnni_gemm.h"
+#include "q4kp_metadata.h"
 #include "q4kp_kernel.h"
 #define GGML_COMMON_IMPL_CPP
 #define GGML_COMMON_DECL_CPP
@@ -15,7 +17,6 @@
 #include <cstdint>
 #include <cstring>
 
-#define Q4KP_VNNI_GEMM_TARGET __attribute__((target("avx2,bmi2,fma,f16c,avx512f,avx512vl,avx512vnni")))
 #define UNUSED GGML_UNUSED
 #ifndef GGML_F32Cx8_LOAD
 #define GGML_F32Cx8_LOAD(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
@@ -25,17 +26,8 @@ static_assert(sizeof(block_q4_Kx8) == Q4KP_PACKED_BLOCK_BYTES, "Q4KP block layou
 static_assert(offsetof(block_q4_Kx8, scales) == 32, "Q4KP scale offset drift");
 static_assert(offsetof(block_q4_Kx8, qs) == 128, "Q4KP quant offset drift");
 
-static inline Q4KP_VNNI_GEMM_TARGET __m128i q4kp_load_group(const uint8_t *code) {
-    uint64_t first, last;
-    // These two unaligned loads stay within the complete 12-byte metadata group.
-    std::memcpy(&first, code, 8);
-    std::memcpy(&last, code + 4, 8);
-    const uint64_t mask = 0x3f3f3f3f3f3f3f3full;
-    return _mm_set_epi64x(static_cast<int64_t>(_pdep_u64(last >> 16, mask)),
-                         static_cast<int64_t>(_pdep_u64(first, mask)));
-}
 
-static inline Q4KP_VNNI_GEMM_TARGET __m256i q4kp_dot4(
+static inline Q4KP_VNNI_TARGET __m256i q4kp_dot4(
         __m256i w0, __m256i x0, __m256i w1, __m256i x1,
         __m256i w2, __m256i x2, __m256i w3, __m256i x3) {
     // The AVX2 path sums pairs in int16 before joining adjacent equal-scale
@@ -50,11 +42,8 @@ static inline Q4KP_VNNI_GEMM_TARGET __m256i q4kp_dot4(
     return _mm256_add_epi32(p0, p1);
 }
 
-extern "C" Q4KP_VNNI_GEMM_TARGET void q4kp_vnni_gemm(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
-    if (n <= 0 || n % QK_K != 0 || nc <= 0 || nc % 8 != 0 || nr <= 0 || nr % 4 != 0 || bs < size_t(nc) ||
-        s == nullptr || vx == nullptr || vy == nullptr) {
-        return;
-    }
+template<bool P6>
+static Q4KP_VNNI_TARGET void q4kp_vnni_gemm_body(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;
@@ -223,8 +212,8 @@ extern "C" Q4KP_VNNI_GEMM_TARGET void q4kp_vnni_gemm(int n, float * GGML_RESTRIC
                     const __m256i rhs_mat_0145_13_sp2 = _mm256_shuffle_epi32(rhs_mat_0145_13, 221); //B10(28-31) B11(28-31) B10(28-31) B11(28-31) B14(28-31) B15(28-31) B14(28-31) B15(28-31)
                     const __m256i rhs_mat_2367_13_sp2 = _mm256_shuffle_epi32(rhs_mat_2367_13, 221); //B12(28-31) B13(28-31) B12(28-31) B13(28-31) B16(28-31) B17(28-31) B16(28-31) B17(28-31)
 
-                    const __m128i decoded_0 = q4kp_load_group(b_ptr[b].scales + 24 * sb);
-                    const __m128i decoded_1 = q4kp_load_group(b_ptr[b].scales + 24 * sb + 12);
+                    const __m128i decoded_0 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb);
+                    const __m128i decoded_1 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb + 12);
 
                     // Scales of first sub block in the sb loop
                     const __m128i mins_and_scales_0 = decoded_0;
@@ -539,8 +528,8 @@ extern "C" Q4KP_VNNI_GEMM_TARGET void q4kp_vnni_gemm(int n, float * GGML_RESTRIC
                     const __m256i rhs_mat_0145_13_sp2 = _mm256_shuffle_epi32(rhs_mat_0145_13, 221); //B10(28-31) B11(28-31) B10(28-31) B11(28-31) B14(28-31) B15(28-31) B14(28-31) B15(28-31)
                     const __m256i rhs_mat_2367_13_sp2 = _mm256_shuffle_epi32(rhs_mat_2367_13, 221); //B12(28-31) B13(28-31) B12(28-31) B13(28-31) B16(28-31) B17(28-31) B16(28-31) B17(28-31)
 
-                    const __m128i decoded_0 = q4kp_load_group(b_ptr[b].scales + 24 * sb);
-                    const __m128i decoded_1 = q4kp_load_group(b_ptr[b].scales + 24 * sb + 12);
+                    const __m128i decoded_0 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb);
+                    const __m128i decoded_1 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb + 12);
 
                     // Scales of first sub block in the sb loop
                     const __m128i mins_and_scales_0 = decoded_0;
@@ -726,4 +715,12 @@ extern "C" Q4KP_VNNI_GEMM_TARGET void q4kp_vnni_gemm(int n, float * GGML_RESTRIC
         }
     }
 
+}
+
+Q4KP_VNNI_TARGET void q4kp_vnni_gemm_impl(int n, float * s, size_t bs, const void * x, const void * y, int nr, int nc) {
+    q4kp_vnni_gemm_body<true>(n, s, bs, x, y, nr, nc);
+}
+
+Q4KP_VNNI_TARGET void q4kp_vnni_original_gemm_impl(int n, float * s, size_t bs, const void * x, const void * y, int nr, int nc) {
+    q4kp_vnni_gemm_body<false>(n, s, bs, x, y, nr, nc);
 }

@@ -206,6 +206,10 @@ add_library(ggml-base
             ggml-threading.h
             ggml-quants.c
             ggml-quants.h
+            s24.c
+            s24.h
+            ggml-s24.c
+            ggml-s24.h
             gguf.cpp)
 
 set_target_properties(ggml-base PROPERTIES

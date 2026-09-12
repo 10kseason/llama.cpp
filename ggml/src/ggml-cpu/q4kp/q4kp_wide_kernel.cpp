@@ -1,5 +1,6 @@
 // P6 wide GEMV experiment. Low/high 256-bit halves compute independent
 // eight-row groups. Q8 broadcasts are shared; the layout and FP32 order stay.
+#include "q4kp_impl.h"
 #include "q4kp_wide_kernel.h"
 #include "q4kp_vnni_kernel.h"
 #define GGML_COMMON_IMPL_CPP
@@ -18,9 +19,6 @@
 #define GGML_F32Cx8_LOAD(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
 #endif
 #define GGML_F32Cx8_REARRANGE_LOAD(x, mask) _mm256_cvtph_ps(_mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(x)), mask))
-extern "C" int q4kp_wide_supported(void) {
-    return q4kp_vnni_supported() && __builtin_cpu_supports("avx512bw");
-}
 static inline Q4KP_WIDE_TARGET __m512i q4kp_join256(__m256i a, __m256i b) {
     return _mm512_inserti64x4(_mm512_castsi256_si512(a), b, 1);
 }
@@ -35,11 +33,7 @@ static inline Q4KP_WIDE_TARGET __m128i q4kp_wide_load_group(const uint8_t *code)
     return _mm_set_epi64x((int64_t)_pdep_u64(last >> 16, mask), (int64_t)_pdep_u64(first, mask));
 }
 
-extern "C" Q4KP_WIDE_TARGET void q4kp_wide_gemv(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
-    if (n <= 0 || n % QK_K != 0 || nc <= 0 || nc % 8 != 0 || nr != 1 ||
-        s == nullptr || vx == nullptr || vy == nullptr) {
-        return;
-    }
+Q4KP_WIDE_TARGET void q4kp_wide_gemv_impl(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;

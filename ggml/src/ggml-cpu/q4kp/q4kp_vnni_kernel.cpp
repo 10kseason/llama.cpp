@@ -1,6 +1,8 @@
 // P6 GEMV experiment: keep quant values and FP32 operations unchanged; replace
 // the unsigned-byte/signed-byte dot stage with non-saturating VNNI dot-adds.
+#include "q4kp_impl.h"
 #include "q4kp_vnni_kernel.h"
+#include "q4kp_metadata.h"
 #define GGML_COMMON_IMPL_CPP
 #define GGML_COMMON_DECL_CPP
 #include "ggml-common.h"
@@ -11,38 +13,16 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#define Q4KP_VNNI_TARGET __attribute__((target("avx2,bmi2,fma,f16c,avx512f,avx512vl,avx512vnni")))
 #define UNUSED GGML_UNUSED
 #ifndef GGML_F32Cx8_LOAD
 #define GGML_F32Cx8_LOAD(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
 #endif
 #define GGML_F32Cx8_REARRANGE_LOAD(x, mask) _mm256_cvtph_ps(_mm_shuffle_epi8(_mm_loadu_si128((const __m128i *)(x)), mask))
 
-extern "C" int q4kp_vnni_supported(void) {
-    __builtin_cpu_init();
-    return __builtin_cpu_supports("avx2") && __builtin_cpu_supports("bmi2") &&
-        __builtin_cpu_supports("fma") && __builtin_cpu_supports("f16c") &&
-        __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512vl") &&
-        __builtin_cpu_supports("avx512vnni");
-}
 
-static inline Q4KP_VNNI_TARGET __m128i q4kp_load_group(const uint8_t *code) {
-    uint64_t first, last;
-    // Both loads remain WITHIN the 12-byte group, including the final group
-    // at the end of the metadata. memcpy supports unaligned addresses safely.
-    std::memcpy(&first, code, 8);
-    std::memcpy(&last, code + 4, 8);
-    const uint64_t mask = 0x3f3f3f3f3f3f3f3full;
-    const uint64_t scales = _pdep_u64(first, mask); // consumes only low 48 bits
-    const uint64_t mins = _pdep_u64(last >> 16, mask);
-    return _mm_set_epi64x(static_cast<int64_t>(mins), static_cast<int64_t>(scales));
-}
 
-extern "C" Q4KP_VNNI_TARGET void q4kp_vnni_gemv(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
-    if (n <= 0 || n % QK_K != 0 || nc <= 0 || nc % 8 != 0 || nr != 1 ||
-        s == nullptr || vx == nullptr || vy == nullptr) {
-        return;
-    }
+template<bool P6>
+static Q4KP_VNNI_TARGET void q4kp_vnni_gemv_body(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;
@@ -142,8 +122,8 @@ extern "C" Q4KP_VNNI_TARGET void q4kp_vnni_gemv(int n, float * GGML_RESTRICT s, 
                     const __m256i rhs_vec_0123_13 = _mm256_and_si256(_mm256_srli_epi16(rhs_raw_vec_0123_3, 4), m4b);
                     const __m256i rhs_vec_4567_13 = _mm256_and_si256(_mm256_srli_epi16(rhs_raw_vec_4567_3, 4), m4b);
 
-                    const __m128i decoded_0 = q4kp_load_group(b_ptr[b].scales + 24 * sb);
-                    const __m128i decoded_1 = q4kp_load_group(b_ptr[b].scales + 24 * sb + 12);
+                    const __m128i decoded_0 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb);
+                    const __m128i decoded_1 = q4kp_load_group<P6>(b_ptr[b].scales + 24 * sb + 12);
 
                     // Scales of first sub block in the sb loop
                     const __m128i mins_and_scales_0 = decoded_0;
@@ -236,4 +216,12 @@ extern "C" Q4KP_VNNI_TARGET void q4kp_vnni_gemv(int n, float * GGML_RESTRICT s, 
         }
     }
 
+}
+
+Q4KP_VNNI_TARGET void q4kp_vnni_gemv_impl(int n, float * s, size_t bs, const void * x, const void * y, int nr, int nc) {
+    q4kp_vnni_gemv_body<true>(n, s, bs, x, y, nr, nc);
+}
+
+Q4KP_VNNI_TARGET void q4kp_vnni_original_gemv_impl(int n, float * s, size_t bs, const void * x, const void * y, int nr, int nc) {
+    q4kp_vnni_gemv_body<false>(n, s, bs, x, y, nr, nc);
 }

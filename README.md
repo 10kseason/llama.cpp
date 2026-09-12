@@ -1,27 +1,30 @@
-# llama.cpp - Q4KP CPU kernel fork
+# llama.cpp - CPU/GPU kernel experiment fork
 
 **`10kseason/llama.cpp`는 [원본 llama.cpp](https://github.com/ggml-org/llama.cpp)를 기반으로 한 개인 사용·실험·유지보수용 포크입니다.**
 
-기존 GGUF 모델을 그대로 사용하면서 Q4_K CPU 행렬 연산을 개선하는 P6/VNNI 커널을 실험합니다. 추가한 커널은 이 포크에서 관리하며, 원본 프로젝트의 공식 기능이나 배포판으로 소개하지 않습니다.
+기존 Q4_K GGUF의 CPU 연산과, 선택한 행렬을 S24로 양자화한 혼합 GGUF의 Vulkan 실행을 실험합니다. 추가한 커널은 이 포크에서 관리하며, 원본 프로젝트의 공식 기능이나 배포판으로 소개하지 않습니다.
 
 ## 이 포크에 추가한 내용
 
 | 구성 | 용도 |
 | --- | --- |
 | P6 | Q4_K의 스케일·최솟값 메타데이터를 CPU 메모리 안에서 무손실로 재배치 |
-| VNNI | 같은 P6 레이아웃을 사용하는 256비트 AVX-512 VNNI GEMV/GEMM 커널 |
+| VNNI | 256비트 AVX-512 VNNI GEMV/GEMM. 원본 레이아웃과 P6 레이아웃을 각각 선택 가능 |
 | wide | 512비트 GEMV 실험 커널. 행렬 크기와 CPU에 따라 더 느릴 수 있음 |
-| 검증 도구 | 원본 AVX2·스칼라 기준과의 출력 비교, 재배치·뷰·그래프 테스트 |
-| S24 GPU 소스 | Vulkan/CUDA 단일 행렬 실험 소스. llama.cpp GPU 백엔드에는 아직 미통합 |
+| CPU 호출 검사 | 잘못된 인자를 Release에서도 명시적으로 중단. 출력 정합성·뷰·그래프·실패 경로 검사 |
+| S24 혼합 양자화 | 실험 타입 63의 코덱·GGUF 로더·CPU fallback·텐서별 변환 옵션 |
+| S24 Vulkan | 검증 업로드·실행 배치 변환·백엔드 호출·읽기 복원·실행 도구 통합 |
 
-GGUF 파일이나 양자화된 가중치 값을 바꾸지 않습니다. 빌드 옵션 `GGML_CPU_Q4KP`와 실행 환경 변수 `GGML_Q4KP`로 선택하며, 기본값은 비활성화입니다. 추가한 P6/VNNI/wide 커널은 CPU용입니다.
+Q4KP는 GGUF 파일이나 가중치 값을 바꾸지 않습니다. `GGML_CPU_Q4KP`와 `GGML_Q4KP`로 선택하며 기본값은 비활성화입니다. `vnni-original`은 P6 재배치 없이 VNNI를 실행합니다. 이 CPU 옵션은 GPU 커널을 켜지 않습니다.
+
+S24는 별도 변환으로 만드는 이 포크의 실험 GGUF 타입이며 원본 llama.cpp 표준 타입이 아닙니다. `GGML_VULKAN=ON` 빌드에서 지원 조건에 맞는 S24 혼합 모델을 실행합니다. 현재 GPU 지원은 소유권이 있는 연속 2차원 S24 가중치의 F32 행렬 곱입니다. CUDA 소스는 참조 실험으로 남아 있으며 CUDA 백엔드 통합은 하지 않았습니다.
 
 ## 사용법과 검증 범위
 
 - **[커널 빌드·실행 방법](examples/q4kp/README.md)**: 필요한 CPU 명령어, 빌드 옵션, 모드 선택과 테스트 실행 방법
-- **[검증 기록](examples/q4kp/VALIDATION.md)**: Windows GCC에서 CTest 6/6 및 합성 커널 테스트 21/21 통과, 플랫폼별 미검증 사항
-- **[CPU 실측](examples/q4kp/BENCHMARKS.md)**: 최적화된 원본 빌드와 60회 교차 비교. 7800X3D 4스레드에서 입력 처리 +20.3%, 토큰 생성의 확실한 개선은 미입증
-- **[S24 GPU 실험 소스](examples/s24-gpu/README.md)**: 실행 배치 변경, 입력 계약, 단일 행렬 정확성·측정 범위
+- **[CPU 검증 기록](examples/q4kp/VALIDATION.md)**: 최신 Release CTest 7/7, Python 검사 18개, 잘못된 호출 132개 거부
+- **[CPU 실측](examples/q4kp/BENCHMARKS.md)**: 기존 native 대조 60회와 별도 2×2 비교 20회. P6 없는 VNNI의 pp512 +46.55%는 고정 AVX2 대비 수치이며, 큰 토큰 생성 이득은 미입증
+- **[S24 GPU 빌드·변환·실행](examples/s24-gpu/README.md)**: 코어/로더/GPU CTest 4/4, 실제 혼합 LFM의 GPU 연산·32토큰 생성 확인, 재현 명령과 개별 측정값
 - **[커널 소스](ggml/src/ggml-cpu/q4kp)**: P6, VNNI, wide 구현
 
 커널 출력의 정합성과 모델의 과제 정확도·전체 토큰 생성 속도는 별도로 평가합니다. 모든 환경에서의 속도 향상이나 모델 정확도 보존율을 보장하지 않습니다. 원본 프로젝트가 제공하는 일반 설치 파일에는 이 포크의 추가 커널이 포함되지 않으므로, 사용 시 위 전용 빌드 안내를 기준으로 합니다.

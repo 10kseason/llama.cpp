@@ -10,6 +10,8 @@ extern "C" {
  */
 int q4kp_vnni_supported(void);
 void q4kp_vnni_gemv(int n, float *s, size_t bs, const void *vx, const void *vy, int nr, int nc);
+/* Original ggml 8x8 packed layout; must NOT receive P6 metadata. */
+void q4kp_vnni_original_gemv(int n, float *s, size_t bs, const void *vx, const void *vy, int nr, int nc);
 #ifdef __cplusplus
 }
 #endif

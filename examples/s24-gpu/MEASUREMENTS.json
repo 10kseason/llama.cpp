@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-12",
+  "environment": {
+    "os": "Windows x86-64",
+    "compiler": "GCC 15.1.0",
+    "configuration": "Release static",
+    "vulkan_sdk": "1.4.309.0",
+    "gpu": "NVIDIA GeForce RTX 4060 Ti 16GB",
+    "driver": "616.92",
+    "api_validation": true,
+    "cpu_q4kp": false,
+    "backend_dl": false,
+    "openmp": false,
+    "native_cpu": true,
+    "clock_control": false
+  },
+  "model": {
+    "architecture": "LFM2.5-2.6B",
+    "allocation": "153 Q6_K, 13 Q8_0, 1 S24, 99 F32 tensors",
+    "bytes": 2334390560,
+    "sha256": "dfab07d45df2b30698871a1c5f6fbcc593723ad235d044698de8dc47e7fac390",
+    "included": false
+  },
+  "reproduce_tensor_argv": [
+    "llama-s24-bench",
+    "--model",
+    "model-mixed-s24.gguf",
+    "--tensor",
+    "blk.2.ffn_gate.weight",
+    "--inputs",
+    "8",
+    "--warmup",
+    "2",
+    "--repetitions",
+    "5",
+    "--device",
+    "0"
+  ],
+  "tensor_tool_stdout": {
+    "backend": "Vulkan0",
+    "cpu_fallback": false,
+    "device_index": 0,
+    "mode": "gguf-tensor",
+    "result": {
+      "columns": 2048,
+      "compact_bytes": 3354624,
+      "correctness": {
+        "bound_gamma": 4.112737404041343e-06,
+        "compact_roundtrip": true,
+        "host_readback_guards": true,
+        "max_absolute_error": 1.4901161193847656e-07,
+        "max_error_bound_ratio": 0.0031792943173216993,
+        "outputs_checked": 86016,
+        "partial_compact_readback": true,
+        "reference": "CPU compact dequantization, FP64 products and sum",
+        "repeated_output_bit_identical": true
+      },
+      "direct42_payload_bytes": 3612672,
+      "input_seed": 240125,
+      "input_type": "F32",
+      "inputs": 8,
+      "rows": 10752,
+      "status": "PASS",
+      "timing": {
+        "excludes": [
+          "upload",
+          "initial graph execution",
+          "readback",
+          "FP64 reference"
+        ],
+        "mean": 893.8,
+        "median": 870.4,
+        "repetitions": 5,
+        "sample_sd": 37.44402489049487,
+        "samples": [
+          919.0,
+          865.1,
+          867.0,
+          870.4,
+          947.5
+        ],
+        "scope": "synchronized ggml Vulkan graph wall time; not device timestamps or model tokens/s",
+        "unit": "microseconds",
+        "validation_dispatches_before_warmup": 1,
+        "warmup": 2
+      },
+      "weight_buffer_allocation_bytes": 3612672,
+      "weight_type": "S24",
+      "weight_type_id": 63,
+      "working_buffer_allocation_bytes": 409600
+    },
+    "status": "PASS",
+    "tensor": "blk.2.ffn_gate.weight",
+    "tool": "llama-s24-bench"
+  },
+  "synthetic_tool_stdout": {
+    "backend": "Vulkan0",
+    "cases": [
+      {
+        "columns": 256,
+        "compact_bytes": 273,
+        "correctness": {
+          "bound_gamma": 4.112737404041343e-06,
+          "compact_roundtrip": true,
+          "host_readback_guards": true,
+          "max_absolute_error": 0.0,
+          "max_error_bound_ratio": 0.0,
+          "outputs_checked": 7,
+          "partial_compact_readback": true,
+          "reference": "CPU compact dequantization, FP64 products and sum",
+          "repeated_output_bit_identical": true
+        },
+        "direct42_payload_bytes": 294,
+        "input_seed": 240125,
+        "input_type": "F32",
+        "inputs": 1,
+        "rows": 7,
+        "status": "PASS",
+        "timing": {
+          "excludes": [
+            "upload",
+            "initial graph execution",
+            "readback",
+            "FP64 reference"
+          ],
+          "mean": 124.75,
+          "median": 124.75,
+          "repetitions": 2,
+          "sample_sd": 16.19274528917193,
+          "samples": [
+            136.2,
+            113.3
+          ],
+          "scope": "synchronized ggml Vulkan graph wall time; not device timestamps or model tokens/s",
+          "unit": "microseconds",
+          "validation_dispatches_before_warmup": 1,
+          "warmup": 1
+        },
+        "weight_buffer_allocation_bytes": 304,
+        "weight_type": "S24",
+        "weight_type_id": 63,
+        "working_buffer_allocation_bytes": 1056
+      },
+      {
+        "columns": 512,
+        "compact_bytes": 1326,
+        "correctness": {
+          "bound_gamma": 4.112737404041343e-06,
+          "compact_roundtrip": true,
+          "host_readback_guards": true,
+          "max_absolute_error": 0.0,
+          "max_error_bound_ratio": 0.0,
+          "outputs_checked": 51,
+          "partial_compact_readback": true,
+          "reference": "CPU compact dequantization, FP64 products and sum",
+          "repeated_output_bit_identical": true
+        },
+        "direct42_payload_bytes": 1428,
+        "input_seed": 240125,
+        "input_type": "F32",
+        "inputs": 3,
+        "rows": 17,
+        "status": "PASS",
+        "timing": {
+          "excludes": [
+            "upload",
+            "initial graph execution",
+            "readback",
+            "FP64 reference"
+          ],
+          "mean": 120.5,
+          "median": 120.5,
+          "repetitions": 2,
+          "sample_sd": 3.2526911934581144,
+          "samples": [
+            118.2,
+            122.8
+          ],
+          "scope": "synchronized ggml Vulkan graph wall time; not device timestamps or model tokens/s",
+          "unit": "microseconds",
+          "validation_dispatches_before_warmup": 1,
+          "warmup": 1
+        },
+        "weight_buffer_allocation_bytes": 1440,
+        "weight_type": "S24",
+        "weight_type_id": 63,
+        "working_buffer_allocation_bytes": 6352
+      },
+      {
+        "columns": 2304,
+        "compact_bytes": 3159,
+        "correctness": {
+          "bound_gamma": 7.927480599577412e-06,
+          "compact_roundtrip": true,
+          "host_readback_guards": true,
+          "max_absolute_error": 1.0138610377907753e-06,
+          "max_error_bound_ratio": 0.0016287255747653739,
+          "outputs_checked": 18,
+          "partial_compact_readback": true,
+          "reference": "CPU compact dequantization, FP64 products and sum",
+          "repeated_output_bit_identical": true
+        },
+        "direct42_payload_bytes": 3402,
+        "input_seed": 240125,
+        "input_type": "F32",
+        "inputs": 2,
+        "rows": 9,
+        "status": "PASS",
+        "timing": {
+          "excludes": [
+            "upload",
+            "initial graph execution",
+            "readback",
+            "FP64 reference"
+          ],
+          "mean": 148.39999999999998,
+          "median": 148.39999999999998,
+          "repetitions": 2,
+          "sample_sd": 8.061017305526645,
+          "samples": [
+            154.1,
+            142.7
+          ],
+          "scope": "synchronized ggml Vulkan graph wall time; not device timestamps or model tokens/s",
+          "unit": "microseconds",
+          "validation_dispatches_before_warmup": 1,
+          "warmup": 1
+        },
+        "weight_buffer_allocation_bytes": 3408,
+        "weight_type": "S24",
+        "weight_type_id": 63,
+        "working_buffer_allocation_bytes": 18512
+      }
+    ],
+    "cpu_fallback": false,
+    "device_index": 0,
+    "mode": "self-test",
+    "status": "PASS",
+    "tool": "llama-s24-bench",
+    "unsupported_ops_rejected": [
+      "S24_CONCAT",
+      "S24_VIEW",
+      "S24_CPY",
+      "misaligned_F32_input"
+    ]
+  },
+  "full_model_smoke": {
+    "status": "PASS",
+    "exit_code": 0,
+    "generated_tokens": 32,
+    "s24_prefill_calls": 1,
+    "prefill_tokens": 19,
+    "s24_single_token_calls": 31,
+    "api_validation_errors": 0,
+    "best_practice_warnings_retained": 41,
+    "completed_answer_or_quality_test": false,
+    "model_speed_benchmark": false
+  },
+  "rejection_tests": {
+    "status": "PASS",
+    "cases": [
+      "invalid-scale",
+      "invalid-support",
+      "partial-upload",
+      "view"
+    ],
+    "valid_upload_roundtrip_before_each_rejection": true
+  },
+  "ctest": {
+    "passed": 4,
+    "failed": 0,
+    "names": [
+      "test-s24-codec",
+      "test-s24-loader",
+      "s24-vulkan-self-test",
+      "s24-vulkan-rejections"
+    ]
+  },
+  "limits": [
+    "Graph wall times include submission and synchronization; not device timestamps or tokens per second.",
+    "Validation enabled; not a fastest-backend configuration.",
+    "Different SDK extension availability can change optional feature selection.",
+    "Single GPU and single actual mixed-model allocation; AMD/iGPU untested.",
+    "No 94 percent model quality or stock CUDA speed claim.",
+    "Historical standalone GPU benchmark is separate."
+  ]
+}

@@ -157,6 +157,8 @@ extern "C" {
         LLAMA_FTYPE_MOSTLY_Q1_0          = 40, // except 1d tensors
         LLAMA_FTYPE_MOSTLY_Q2_0          = 41, // except 1d tensors
 
+        LLAMA_FTYPE_MOSTLY_S24           = 63, // private experimental format
+
         LLAMA_FTYPE_GUESSED = 1024, // not specified in the model file
     };
 

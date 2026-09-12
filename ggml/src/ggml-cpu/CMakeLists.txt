@@ -67,14 +67,19 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
         ggml-cpu/vec.cpp
         ggml-cpu/ops.h
         ggml-cpu/ops.cpp
+        ggml-cpu/s24-dot.c
+        ggml-cpu/s24-dot.h
         )
 
     if (GGML_CPU_Q4KP)
         list(APPEND GGML_CPU_SOURCES
+            ggml-cpu/q4kp/q4kp_entry.cpp
             ggml-cpu/q4kp/q4kp_kernel.cpp
             ggml-cpu/q4kp/q4kp_vnni_kernel.cpp
             ggml-cpu/q4kp/q4kp_vnni_gemm.cpp
             ggml-cpu/q4kp/q4kp_wide_kernel.cpp)
+        set_source_files_properties(ggml-cpu/q4kp/q4kp_entry.cpp PROPERTIES COMPILE_OPTIONS
+            "-march=x86-64;-mno-avx;-mno-avx2;-mno-bmi2;-mno-fma;-mno-f16c;-mno-avx512f")
         target_compile_definitions(${GGML_CPU_NAME} PRIVATE GGML_CPU_Q4KP)
     endif()
 

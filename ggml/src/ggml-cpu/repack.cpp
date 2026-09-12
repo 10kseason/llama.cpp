@@ -27,7 +27,7 @@
 #include <cstdlib>
 
 // CPU-only process-local layout. The GGUF and allocation size stay unchanged.
-static std::atomic<uint64_t> q4kp_tensors{0}, q4kp_bytes{0}, q4kp_calls{0};
+static std::atomic<uint64_t> q4kp_tensors{0}, q4kp_bytes{0}, q4kp_calls{0}, q4kp_selected{0};
 // The mode is fixed before the first tensor is packed.
 static int q4kp_mode() {
     static const int mode = []() {
@@ -38,6 +38,11 @@ static int q4kp_mode() {
             if (q4kp_vnni_supported()) { return 2; }
             GGML_LOG_WARN("GGML_Q4KP: VNNI unavailable; using P6\n");
             return 1;
+        }
+        if (std::strcmp(value, "vnni-original") == 0) {
+            if (q4kp_vnni_supported()) { return 4; }
+            GGML_LOG_WARN("GGML_Q4KP: VNNI unavailable; keeping original layout and kernels\n");
+            return 0;
         }
         if (std::strcmp(value, "wide") == 0) {
             if (q4kp_wide_supported()) { return 3; }
@@ -50,17 +55,20 @@ static int q4kp_mode() {
     }();
     return mode;
 }
+extern "C" int q4kp_runtime_mode(void) { return q4kp_mode(); }
 extern "C" int q4kp_runtime_enabled(void) { return q4kp_mode() != 0; }
 static void q4kp_dispatch_gemv(int n, float *s, size_t bs, const void *x, const void *y, int nr, int nc) {
     switch (q4kp_mode()) {
+        case 4: q4kp_vnni_original_gemv(n, s, bs, x, y, nr, nc); break;
         case 3: q4kp_wide_gemv(n, s, bs, x, y, nr, nc); break;
         case 2: q4kp_vnni_gemv(n, s, bs, x, y, nr, nc); break;
         default: q4kp_gemv(n, s, bs, x, y, nr, nc); break;
     }
 }
 static void q4kp_dispatch_gemm(int n, float *s, size_t bs, const void *x, const void *y, int nr, int nc) {
-    // Both modes have already passed the VNNI ISA gate in q4kp_mode().
-    if (q4kp_mode() >= 2) {
+    if (q4kp_mode() == 4) {
+        q4kp_vnni_original_gemm(n, s, bs, x, y, nr, nc);
+    } else if (q4kp_mode() >= 2) {
         q4kp_vnni_gemm(n, s, bs, x, y, nr, nc);
     } else {
         q4kp_gemm(n, s, bs, x, y, nr, nc);
@@ -70,6 +78,7 @@ extern "C" uint64_t q4kp_runtime_stat(int index) {
     if(index==0)return q4kp_tensors.load(std::memory_order_relaxed);
     if(index==1)return q4kp_bytes.load(std::memory_order_relaxed);
     if(index==2)return q4kp_calls.load(std::memory_order_relaxed);
+    if(index==4)return q4kp_selected.load(std::memory_order_relaxed);
     return 0; // index 3: additional allocation bytes, always zero.
 }
 static bool q4kp_eligible(const ggml_tensor *t) {
@@ -4237,7 +4246,7 @@ class tensor_traits_base : public ggml::cpu::tensor_traits {
     virtual int repack(struct ggml_tensor * t, const void * data, size_t data_size) = 0;
 };
 
-template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PARAM_TYPE, bool Q4KP = false> class tensor_traits : public tensor_traits_base {
+template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PARAM_TYPE, int Q4KP = 0> class tensor_traits : public tensor_traits_base {
 
     bool work_size(int /* n_threads */, const struct ggml_tensor * op, size_t & size) override {
         // not realy a GGML_TYPE_Q8_0 but same size.
@@ -4272,6 +4281,7 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
 #ifdef GGML_CPU_Q4KP
         if constexpr (Q4KP) {
             GGML_ASSERT(op->op==GGML_OP_MUL_MAT && q4kp_compatible_view(op->src[0]));
+            GGML_ASSERT(Q4KP == (q4kp_mode() == 4 ? 2 : 1));
             // One count per matrix operation, not an atomic increment per row chunk.
             if(params->ith==0)q4kp_calls.fetch_add(1,std::memory_order_relaxed);
         }
@@ -4624,11 +4634,15 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
 #ifdef GGML_CPU_Q4KP
         if constexpr (Q4KP) {
             GGML_ASSERT(!t->view_src && q4kp_eligible(t));
-            if(result==0)result=q4kp_recode(t->data,data_size);
-            if(result==0) {
-                q4kp_tensors.fetch_add(1,std::memory_order_relaxed);
-                q4kp_bytes.fetch_add(data_size/1152*96,std::memory_order_relaxed);
+            GGML_ASSERT(Q4KP == (q4kp_mode() == 4 ? 2 : 1));
+            if constexpr (Q4KP == 1) {
+                if(result==0)result=q4kp_recode(t->data,data_size);
+                if(result==0) {
+                    q4kp_tensors.fetch_add(1,std::memory_order_relaxed);
+                    q4kp_bytes.fetch_add(data_size/1152*96,std::memory_order_relaxed);
+                }
             }
+            if(result==0)q4kp_selected.fetch_add(1,std::memory_order_relaxed);
         }
 #endif
         return result;
@@ -4639,8 +4653,10 @@ template <typename BLOC_TYPE, int64_t INTER_SIZE, int64_t NB_COLS, ggml_type PAR
 
 #ifdef GGML_CPU_Q4KP
 static const ggml::cpu::tensor_traits *q4kp_trait() {
-    static const ggml::cpu::repack::tensor_traits<block_q4_K,8,8,GGML_TYPE_Q8_K,true> trait;
-    return &trait;
+    // Distinct traits record the actual metadata ownership, including views.
+    static const ggml::cpu::repack::tensor_traits<block_q4_K,8,8,GGML_TYPE_Q8_K,1> p6;
+    static const ggml::cpu::repack::tensor_traits<block_q4_K,8,8,GGML_TYPE_Q8_K,2> original;
+    return q4kp_mode() == 4 ? static_cast<const ggml::cpu::tensor_traits *>(&original) : &p6;
 }
 static bool q4kp_has_layout(const ggml_tensor *t) {
     const auto *owner=q4kp_owner(t);

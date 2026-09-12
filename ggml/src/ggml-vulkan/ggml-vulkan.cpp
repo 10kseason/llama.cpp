@@ -1,4 +1,5 @@
 #include "ggml-vulkan.h"
+#include "ggml-s24.h"
 #include <vulkan/vulkan_core.h>
 #if defined(GGML_VULKAN_RUN_TESTS) || defined(GGML_VULKAN_CHECK_RESULTS)
 #include <chrono>
@@ -24,6 +25,7 @@ DispatchLoaderDynamic & ggml_vk_default_dispatcher();
 // Fallback definitions for VK_NV_cooperative_matrix_decode_vector in case the
 // installed Vulkan headers predate the extension.
 #ifndef VK_NV_cooperative_matrix_decode_vector
+#define GGML_VK_FALLBACK_COOPMAT_DECODE_HEADER
 #define VK_NV_cooperative_matrix_decode_vector 1
 #define VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_EXTENSION_NAME "VK_NV_cooperative_matrix_decode_vector"
 #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_DECODE_VECTOR_FEATURES_NV ((VkStructureType)1000689000)
@@ -157,6 +159,7 @@ typedef struct VkPhysicalDeviceShaderFloat8FeaturesEXT {
 #endif
 
 #ifndef VK_KHR_INTERNALLY_SYNCHRONIZED_QUEUES_EXTENSION_NAME
+#define GGML_VK_FALLBACK_SYNC_QUEUE_HEADER
 #define VK_KHR_INTERNALLY_SYNCHRONIZED_QUEUES_EXTENSION_NAME "VK_KHR_internally_synchronized_queues"
 #define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INTERNALLY_SYNCHRONIZED_QUEUES_FEATURES_KHR ((VkStructureType)1000504000)
 #define VK_DEVICE_QUEUE_CREATE_INTERNALLY_SYNCHRONIZED_BIT_KHR ((VkDeviceQueueCreateFlagBits)0x00000004)
@@ -953,6 +956,7 @@ struct vk_device_struct {
 
     vk_pipeline pipeline_mul_mat_vec_p021_f16_f32[p021_max_gqa_ratio];
     vk_pipeline pipeline_mul_mat_vec_nc_f16_f32;
+    vk_pipeline pipeline_mul_mat_s24_direct42;
     vk_pipeline pipeline_get_rows[GGML_TYPE_COUNT];
     vk_pipeline pipeline_get_rows_f32[GGML_TYPE_COUNT];
     vk_pipeline pipeline_get_rows_back_f32;
@@ -1260,8 +1264,8 @@ struct vk_buffer_struct {
         }
         VK_LOG_DEBUG("~vk_buffer_struct(" << buffer << ", " << size << ")");
 
-        device->device.freeMemory(device_memory);
         device->device.destroyBuffer(buffer);
+        device->device.freeMemory(device_memory);
     }
 };
 
@@ -2579,6 +2583,9 @@ struct ggml_backend_vk_buffer_context {
     vk_device_ref device;
     vk_buffer dev_buffer;
     std::string name;
+    std::mutex s24_mutex;
+    // Only complete, validated uploads may reach the S24 shader.
+    std::unordered_map<size_t, size_t> s24_ready;
 
     ggml_backend_vk_buffer_context(vk_device_ref device, vk_buffer&& dev_buffer, std::string& name) :
         device(device),
@@ -2590,6 +2597,50 @@ struct ggml_backend_vk_buffer_context {
         ggml_vk_destroy_buffer(dev_buffer);
     }
 };
+
+static bool ggml_vk_s24_shape(const ggml_tensor * tensor) {
+    return tensor->type == GGML_TYPE_S24 && tensor->view_src == nullptr && tensor->view_offs == 0 &&
+           tensor->ne[0] > 0 && tensor->ne[0] % 256 == 0 && tensor->ne[1] > 0 &&
+           tensor->ne[2] == 1 && tensor->ne[3] == 1 && ggml_is_contiguous(tensor);
+}
+
+static size_t ggml_vk_s24_alloc_size(const ggml_tensor * tensor) {
+    GGML_ASSERT(ggml_vk_s24_shape(tensor) && "S24 Vulkan storage requires an owned contiguous 2D tensor");
+    const size_t compact = ggml_nbytes(tensor);
+    GGML_ASSERT(compact % 39 == 0 && compact / 39 <= (SIZE_MAX - 3) / 42);
+    return (compact / 39 * 42 + 3) & ~size_t(3);
+}
+
+static void ggml_vk_s24_require_ready(ggml_backend_buffer_t buffer, const ggml_tensor * tensor);
+
+static bool ggml_vk_s24_supports_mul_mat(const vk_device & device, const ggml_tensor * op) {
+    const ggml_tensor * w = op->src[0];
+    const ggml_tensor * x = op->src[1];
+    if (!ggml_vk_s24_shape(w) || op->op != GGML_OP_MUL_MAT || x->type != GGML_TYPE_F32 ||
+        op->type != GGML_TYPE_F32 || !ggml_is_contiguous(x) || !ggml_is_contiguous(op) ||
+        x->ne[0] != w->ne[0] || x->ne[2] != 1 || x->ne[3] != 1 ||
+        op->ne[0] != w->ne[1] || op->ne[1] != x->ne[1] || op->ne[2] != 1 || op->ne[3] != 1 || x->ne[1] <= 0) {
+        return false;
+    }
+    const auto & limits = device->properties.limits;
+    if (x->view_offs % sizeof(float) != 0 || op->view_offs % sizeof(float) != 0 ||
+        x->view_offs % limits.minStorageBufferOffsetAlignment != 0 ||
+        op->view_offs % limits.minStorageBufferOffsetAlignment != 0) {
+        return false;
+    }
+    for (const ggml_tensor * tensor : {x, op}) {
+        if (tensor->buffer && tensor->data && tensor->buffer->buft->iface.get_name == ggml_backend_vk_buffer_type_name &&
+            (vk_tensor_offset(tensor) + tensor->view_offs) % limits.minStorageBufferOffsetAlignment != 0) {
+            return false;
+        }
+    }
+    const uint64_t weight_bytes = uint64_t(ggml_nbytes(w)) / 39 * 42;
+    return weight_bytes <= UINT32_MAX - 3 && weight_bytes + 3 <= limits.maxStorageBufferRange &&
+           weight_bytes + 3 <= device->max_buffer_size &&
+           ggml_nbytes(x) <= limits.maxStorageBufferRange && ggml_nbytes(op) <= limits.maxStorageBufferRange &&
+           ggml_nelements(x) <= UINT32_MAX && ggml_nelements(op) <= UINT32_MAX &&
+           w->ne[1] <= limits.maxComputeWorkGroupCount[0] && x->ne[1] <= limits.maxComputeWorkGroupCount[1];
+}
 
 void vk_memory_logger::log_allocation(vk_buffer_ref buf_ref, size_t size) {
     if (!vk_memory_logger_enabled) {
@@ -2627,6 +2678,7 @@ void vk_memory_logger::log_deallocation(vk_buffer_ref buf_ref) {
 
 struct vk_instance_t {
     vk::Instance instance;
+    VkDebugUtilsMessengerEXT validation_messenger = VK_NULL_HANDLE;
 
     bool debug_utils_support = false;  // VK_EXT_debug_utils enabled
     PFN_vkSetDebugUtilsObjectNameEXT pfn_vkSetDebugUtilsObjectNameEXT = {};
@@ -5507,6 +5559,7 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
     ggml_vk_create_pipeline(device, device->pipeline_dequant[GGML_TYPE_NVFP4],   "dequant_nvfp4",   dequant_nvfp4_len,   dequant_nvfp4_data,   "main", 2, 5 * sizeof(uint32_t), {256 * 16, 1, 1}, {}, 1);
 
     // get_rows
+    ggml_vk_create_pipeline(device, device->pipeline_mul_mat_s24_direct42, "mul_mat_s24_direct42", mul_mat_s24_direct42_len, mul_mat_s24_direct42_data, "main", 3, sizeof(std::array<uint32_t, 4>), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_F32 ], "get_rows_f32",  get_rows_f32_len,  get_rows_f32_data,  "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_F16 ], "get_rows_f16",  get_rows_f16_len,  get_rows_f16_data,  "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_get_rows[GGML_TYPE_BF16], "get_rows_bf16", get_rows_bf16_len, get_rows_bf16_data, "main", 3, sizeof(vk_op_binary_push_constants), { 512, 1, 1}, {}, 1);
@@ -6364,7 +6417,11 @@ static vk_device ggml_vk_get_device(size_t idx) {
 #endif
             } else if (strcmp(VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_EXTENSION_NAME, properties.extensionName) == 0 &&
                        !getenv("GGML_VK_DISABLE_COOPMAT2_DECODE_VECTOR")) {
+#if !defined(GGML_VULKAN_VALIDATE) || !defined(GGML_VK_FALLBACK_COOPMAT_DECODE_HEADER)
                 coopmat2_decode_vector_support = true;
+#else
+                GGML_LOG_INFO("ggml_vulkan: SDK validation cannot check decode-vector; optional feature disabled\n");
+#endif
 #if defined(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
             } else if (strcmp("VK_KHR_shader_integer_dot_product", properties.extensionName) == 0 &&
                        !getenv("GGML_VK_DISABLE_INTEGER_DOT_PRODUCT")) {
@@ -6398,7 +6455,11 @@ static vk_device ggml_vk_get_device(size_t idx) {
                 device->shader_64b_indexing = true;
 #endif
             } else if (strcmp(VK_KHR_INTERNALLY_SYNCHRONIZED_QUEUES_EXTENSION_NAME, properties.extensionName) == 0) {
+#if !defined(GGML_VULKAN_VALIDATE) || !defined(GGML_VK_FALLBACK_SYNC_QUEUE_HEADER)
                 internally_sync_support = true;
+#else
+                GGML_LOG_INFO("ggml_vulkan: SDK validation cannot check internal queue synchronization; using external synchronization\n");
+#endif
             } else if (strcmp("VK_EXT_device_fault", properties.extensionName) == 0) {
                 device->device_fault = true;
             }
@@ -7253,7 +7314,9 @@ static void ggml_vk_print_gpu_info(size_t idx) {
 #endif
         } else if (strcmp(VK_NV_COOPERATIVE_MATRIX_DECODE_VECTOR_EXTENSION_NAME, properties.extensionName) == 0 &&
                    !getenv("GGML_VK_DISABLE_COOPMAT2_DECODE_VECTOR")) {
+#if !defined(GGML_VULKAN_VALIDATE) || !defined(GGML_VK_FALLBACK_COOPMAT_DECODE_HEADER)
             coopmat2_decode_vector_support = true;
+#endif
 #if defined(GGML_VULKAN_INTEGER_DOT_GLSLC_SUPPORT)
         } else if (strcmp("VK_KHR_shader_integer_dot_product", properties.extensionName) == 0 &&
                     !getenv("GGML_VK_DISABLE_INTEGER_DOT_PRODUCT")) {
@@ -7465,6 +7528,19 @@ DispatchLoaderDynamic & ggml_vk_default_dispatcher() {
     return ggml_vk_default_dispatcher_instance;
 }
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL ggml_vk_validation_message(
+        VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT,
+        const VkDebugUtilsMessengerCallbackDataEXT * data, void *) {
+    const bool error = (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0;
+    fprintf(stderr, "Validation %s: %s\n", error ? "Error" : "Warning",
+            data && data->pMessage ? data->pMessage : "No diagnostic text");
+    // Keep diagnostics out of model/JSON stdout. API errors cannot look like success.
+    if (error) {
+        GGML_ABORT("Vulkan validation reported an API error");
+    }
+    return VK_FALSE;
+}
+
 static void ggml_vk_instance_init() {
     if (vk_instance_initialized) {
         return;
@@ -7488,7 +7564,8 @@ static void ggml_vk_instance_init() {
 #ifdef __APPLE__
     const bool portability_enumeration_ext = ggml_vk_instance_portability_enumeration_ext_available(instance_extensions);
 #endif
-    const bool debug_utils_ext = ggml_vk_instance_debug_utils_ext_available(instance_extensions) && getenv("GGML_VK_DEBUG_MARKERS") != nullptr;
+    const bool debug_utils_ext = ggml_vk_instance_debug_utils_ext_available(instance_extensions) &&
+                                 (layer_settings || getenv("GGML_VK_DEBUG_MARKERS") != nullptr);
     std::vector<const char*> layers;
 
     if (layer_settings) {
@@ -7507,6 +7584,14 @@ static void ggml_vk_instance_init() {
         extensions.push_back("VK_EXT_debug_utils");
     }
     VkBool32 enable_best_practice = layer_settings;
+    const bool validation_callback = layer_settings && debug_utils_ext;
+    const char * validation_action = "VK_DBG_LAYER_ACTION_CALLBACK";
+    VkDebugUtilsMessengerCreateInfoEXT validation_info{};
+    validation_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    validation_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    validation_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                                 VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    validation_info.pfnUserCallback = ggml_vk_validation_message;
     std::vector<vk::LayerSettingEXT> settings = {
         {
             "VK_LAYER_KHRONOS_validation",
@@ -7516,7 +7601,13 @@ static void ggml_vk_instance_init() {
             &enable_best_practice
         },
     };
+    if (validation_callback) {
+        settings.push_back({"VK_LAYER_KHRONOS_validation", "debug_action", vk::LayerSettingTypeEXT::eString, 1, &validation_action});
+    }
     vk::LayerSettingsCreateInfoEXT layer_setting_info(settings);
+    if (validation_callback) {
+        layer_setting_info.pNext = &validation_info;
+    }
     vk::InstanceCreateInfo instance_create_info(vk::InstanceCreateFlags{}, &app_info, layers, extensions, &layer_setting_info);
 #ifdef __APPLE__
     if (portability_enumeration_ext) {
@@ -7525,6 +7616,13 @@ static void ggml_vk_instance_init() {
 #endif
 
     vk_instance.instance = vk::createInstance(instance_create_info);
+    if (validation_callback) {
+        const auto create_messenger = (PFN_vkCreateDebugUtilsMessengerEXT)
+            vkGetInstanceProcAddr(vk_instance.instance, "vkCreateDebugUtilsMessengerEXT");
+        GGML_ASSERT(create_messenger != nullptr);
+        GGML_ASSERT(create_messenger(vk_instance.instance, &validation_info, nullptr,
+                    &vk_instance.validation_messenger) == VK_SUCCESS);
+    }
     vk_instance_initialized = true;
 
     if (debug_utils_ext) {
@@ -8140,8 +8238,7 @@ static void * ggml_vk_host_malloc(vk_device& device, size_t size) {
     if(!(buf->memory_property_flags & vk::MemoryPropertyFlagBits::eHostVisible)) {
         fprintf(stderr, "WARNING: failed to allocate %.2f MB of pinned memory\n",
             size/1024.0/1024.0);
-        device->device.freeMemory(buf->device_memory);
-        device->device.destroyBuffer(buf->buffer);
+        ggml_vk_destroy_buffer(buf);
         return nullptr;
     }
 
@@ -10124,6 +10221,24 @@ static void ggml_vk_mul_mat(ggml_backend_vk_context * ctx, vk_context& subctx, c
     ggml_tensor * src0 = dst->src[0];
     ggml_tensor * src1 = dst->src[1];
     VK_LOG_DEBUG("ggml_vk_mul_mat(" << src0 << ", " << src1 << ", " << dst << ")");
+
+    if (src0->type == GGML_TYPE_S24) {
+        GGML_ASSERT(ggml_vk_s24_supports_mul_mat(ctx->device, dst));
+        GGML_ASSERT(ctx->num_additional_fused_ops == 0);
+        ggml_vk_s24_require_ready(src0->buffer, src0);
+        vk_subbuffer weights = ggml_vk_tensor_subbuffer(ctx, src0);
+        weights.size = ggml_vk_s24_alloc_size(src0);
+        const vk_subbuffer inputs = ggml_vk_tensor_subbuffer(ctx, src1);
+        const vk_subbuffer outputs = ggml_vk_tensor_subbuffer(ctx, dst);
+        const std::array<uint32_t, 4> pc = {
+            uint32_t(src0->ne[1]), uint32_t(src0->ne[0]), uint32_t(src1->ne[1]), uint32_t(dst->ne[0])
+        };
+        auto & pipeline = ctx->device->pipeline_mul_mat_s24_direct42;
+        ggml_vk_sync_buffers(ctx, subctx);
+        ggml_pipeline_request_descriptor_sets(ctx, pipeline, 1);
+        ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, {weights, inputs, outputs}, pc, {pc[0], pc[2], 1});
+        return;
+    }
 
     // Handle huge A matrix by splitting the M dimensions. This works well for convolution use cases
     // where the M dimension is very large.
@@ -16380,6 +16495,48 @@ static bool ggml_backend_buffer_is_vk(ggml_backend_buffer_t buffer) {
     return buffer->buft->iface.get_name == ggml_backend_vk_buffer_type_name;
 }
 
+static void ggml_vk_s24_require_ready(ggml_backend_buffer_t buffer, const ggml_tensor * tensor) {
+    GGML_ASSERT(ggml_backend_buffer_is_vk(buffer));
+    GGML_ASSERT(ggml_vk_s24_shape(tensor));
+    auto * ctx = (ggml_backend_vk_buffer_context *) buffer->context;
+    const size_t offset = vk_tensor_offset(tensor);
+    std::lock_guard<std::mutex> guard(ctx->s24_mutex);
+    const auto it = ctx->s24_ready.find(offset);
+    GGML_ASSERT(it != ctx->s24_ready.end() && it->second == ggml_nbytes(tensor) &&
+                "S24 tensor has not received a complete validated upload");
+}
+
+static void ggml_vk_s24_upload(ggml_backend_buffer_t buffer, ggml_tensor * tensor, const void * data, size_t offset, size_t size) {
+    GGML_ASSERT(ggml_vk_s24_shape(tensor));
+    GGML_ASSERT(offset == 0 && size == ggml_nbytes(tensor) && data != nullptr &&
+                "S24 Vulkan uploads must contain one complete tensor");
+    GGML_ASSERT(ggml_s24_validate_compact(data, size) && "Invalid S24 compact weights");
+    auto * ctx = (ggml_backend_vk_buffer_context *) buffer->context;
+    const size_t begin = vk_tensor_offset(tensor);
+    const size_t alloc_size = ggml_vk_s24_alloc_size(tensor);
+    GGML_ASSERT(begin <= buffer->size && alloc_size <= buffer->size - begin);
+    std::vector<uint8_t> packed(alloc_size, 0);
+    const size_t payload = size / 39 * 42;
+    GGML_ASSERT(ggml_s24_compact_to_direct42(data, size, packed.data(), payload));
+    GGML_ASSERT(ggml_s24_validate_direct42(packed.data(), payload));
+    ggml_vk_buffer_write(ctx->dev_buffer, begin, packed.data(), packed.size());
+    std::lock_guard<std::mutex> guard(ctx->s24_mutex);
+    ctx->s24_ready[begin] = size;
+}
+
+static void ggml_vk_s24_readback(ggml_backend_buffer_t buffer, const ggml_tensor * tensor, void * data, size_t offset, size_t size) {
+    ggml_vk_s24_require_ready(buffer, tensor);
+    const size_t compact_size = ggml_nbytes(tensor);
+    GGML_ASSERT(data != nullptr && offset <= compact_size && size <= compact_size - offset);
+    auto * ctx = (ggml_backend_vk_buffer_context *) buffer->context;
+    std::vector<uint8_t> packed(ggml_vk_s24_alloc_size(tensor));
+    std::vector<uint8_t> compact(compact_size);
+    ggml_vk_buffer_read(ctx->dev_buffer, vk_tensor_offset(tensor), packed.data(), packed.size());
+    GGML_ASSERT(ggml_s24_direct42_to_compact(packed.data(), compact_size / 39 * 42, compact.data(), compact_size) &&
+                "Invalid S24 device representation");
+    memcpy(data, compact.data() + offset, size);
+}
+
 static void ggml_backend_vk_buffer_free_buffer(ggml_backend_buffer_t buffer) {
     VK_LOG_MEMORY("ggml_backend_vk_buffer_free_buffer()");
     ggml_backend_vk_buffer_context * ctx = (ggml_backend_vk_buffer_context *)buffer->context;
@@ -16395,6 +16552,12 @@ static void * ggml_backend_vk_buffer_get_base(ggml_backend_buffer_t buffer) {
 
 static enum ggml_status ggml_backend_vk_buffer_init_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor) {
     VK_LOG_DEBUG("ggml_backend_vk_buffer_init_tensor(" << buffer << " (" << buffer->context << "), " << tensor << ")");
+    if (tensor->type == GGML_TYPE_S24) {
+        GGML_ASSERT(ggml_vk_s24_shape(tensor) && "S24 Vulkan tensor views are unsupported");
+        auto * ctx = (ggml_backend_vk_buffer_context *) buffer->context;
+        std::lock_guard<std::mutex> guard(ctx->s24_mutex);
+        ctx->s24_ready.erase(vk_tensor_offset(tensor));
+    }
     if (tensor->view_src != nullptr) {
         GGML_ASSERT(tensor->view_src->buffer->buft == buffer->buft);
     }
@@ -16410,6 +16573,13 @@ static void ggml_backend_vk_buffer_memset_tensor(ggml_backend_buffer_t buffer, g
         return;
     }
 
+    if (tensor->type == GGML_TYPE_S24) {
+        GGML_ASSERT(offset == 0 && size == ggml_nbytes(tensor));
+        const std::vector<uint8_t> compact(size, value);
+        ggml_vk_s24_upload(buffer, tensor, compact.data(), 0, size);
+        return;
+    }
+
     uint32_t val32 = (uint32_t)value * 0x01010101;
     ggml_vk_buffer_memset(buf, vk_tensor_offset(tensor) + tensor->view_offs + offset, val32, size);
 }
@@ -16420,6 +16590,11 @@ static void ggml_backend_vk_buffer_set_tensor(ggml_backend_buffer_t buffer, ggml
     vk_buffer buf = buf_ctx->dev_buffer;
 
     if (size == 0) {
+        return;
+    }
+
+    if (tensor->type == GGML_TYPE_S24) {
+        ggml_vk_s24_upload(buffer, tensor, data, offset, size);
         return;
     }
 
@@ -16437,6 +16612,12 @@ static void ggml_backend_vk_buffer_set_tensor_2d(ggml_backend_buffer_t buffer, g
         return;
     }
 
+    if (tensor->type == GGML_TYPE_S24) {
+        GGML_ASSERT(n_copies == 1 && "Strided S24 uploads are unsupported");
+        ggml_vk_s24_upload(buffer, tensor, data, offset, size);
+        return;
+    }
+
     ggml_vk_buffer_write_2d(buf, vk_tensor_offset(tensor) + tensor->view_offs + offset, data, stride_data, stride_tensor, size, n_copies);
 }
 
@@ -16445,6 +16626,11 @@ static void ggml_backend_vk_buffer_get_tensor(ggml_backend_buffer_t buffer, cons
     ggml_backend_vk_buffer_context * buf_ctx = (ggml_backend_vk_buffer_context *)buffer->context;
 
     if (size == 0) {
+        return;
+    }
+
+    if (tensor->type == GGML_TYPE_S24) {
+        ggml_vk_s24_readback(buffer, tensor, data, offset, size);
         return;
     }
 
@@ -16463,12 +16649,28 @@ static void ggml_backend_vk_buffer_get_tensor_2d(ggml_backend_buffer_t buffer, c
         return;
     }
 
+    if (tensor->type == GGML_TYPE_S24) {
+        const size_t total = ggml_nbytes(tensor);
+        GGML_ASSERT(n_copies > 0 && offset <= total && size <= total - offset);
+        GGML_ASSERT(n_copies == 1 || (stride_tensor <= (total - offset - size) / (n_copies - 1) &&
+                    stride_data <= (SIZE_MAX - size) / (n_copies - 1)));
+        std::vector<uint8_t> compact(total);
+        ggml_vk_s24_readback(buffer, tensor, compact.data(), 0, total);
+        for (size_t i = 0; i < n_copies; ++i) {
+            memcpy((uint8_t *) data + i * stride_data, compact.data() + offset + i * stride_tensor, size);
+        }
+        return;
+    }
+
     vk_buffer buf = buf_ctx->dev_buffer;
 
     ggml_vk_buffer_read_2d(buf, vk_tensor_offset(tensor) + tensor->view_offs + offset, data, stride_tensor, stride_data, size, n_copies);
 }
 
 static bool ggml_backend_vk_buffer_cpy_tensor(ggml_backend_buffer_t buffer, const ggml_tensor * src, ggml_tensor * dst) {
+    if (src->type == GGML_TYPE_S24 || dst->type == GGML_TYPE_S24) {
+        return false; // Generic copy uses validated compact readback/upload.
+    }
     if (ggml_nbytes(src) == 0) {
         return true;
     }
@@ -16493,6 +16695,8 @@ static void ggml_backend_vk_buffer_clear(ggml_backend_buffer_t buffer, uint8_t v
     ggml_backend_vk_buffer_context * ctx = (ggml_backend_vk_buffer_context *)buffer->context;
 
     ggml_vk_buffer_memset(ctx->dev_buffer, 0, value, buffer->size);
+    std::lock_guard<std::mutex> guard(ctx->s24_mutex);
+    ctx->s24_ready.clear(); // Raw clears require a new validated S24 upload.
 }
 
 static ggml_backend_buffer_i ggml_backend_vk_buffer_interface = {
@@ -16543,6 +16747,9 @@ static size_t ggml_backend_vk_buffer_type_get_max_size(ggml_backend_buffer_type_
 }
 
 static size_t ggml_backend_vk_buffer_type_get_alloc_size(ggml_backend_buffer_type_t buft, const ggml_tensor * tensor) {
+    if (tensor->type == GGML_TYPE_S24) {
+        return ggml_vk_s24_alloc_size(tensor);
+    }
     return ggml_nbytes(tensor);
 
     UNUSED(buft);
@@ -16657,6 +16864,11 @@ static void ggml_backend_vk_set_tensor_2d_async(ggml_backend_t backend, ggml_ten
                                                 size_t size, size_t n_copies, size_t stride_tensor, size_t stride_data) {
     VK_LOG_DEBUG("ggml_backend_vk_set_tensor_2d_async(" << size << ", " << n_copies << ")");
     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend->context;
+    if (tensor->type == GGML_TYPE_S24) {
+        ggml_vk_synchronize(ctx);
+        ggml_backend_tensor_set_2d(tensor, data, offset, size, n_copies, stride_tensor, stride_data);
+        return;
+    }
     GGML_ASSERT((tensor->buffer->buft == ggml_backend_vk_get_default_buffer_type(backend) || tensor->buffer->buft == ggml_backend_vk_host_buffer_type()) && "unsupported buffer type");
 
     if (size == 0) {
@@ -16720,6 +16932,11 @@ static void ggml_backend_vk_get_tensor_2d_async(ggml_backend_t backend, const gg
                                                 size_t size, size_t n_copies, size_t stride_tensor, size_t stride_data) {
     VK_LOG_DEBUG("ggml_backend_vk_get_tensor_2d_async(" << size << ", " << n_copies << ")");
     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend->context;
+    if (tensor->type == GGML_TYPE_S24) {
+        ggml_vk_synchronize(ctx);
+        ggml_backend_tensor_get_2d(tensor, data, offset, size, n_copies, stride_tensor, stride_data);
+        return;
+    }
     GGML_ASSERT((tensor->buffer->buft == ggml_backend_vk_get_default_buffer_type(backend) || tensor->buffer->buft == ggml_backend_vk_host_buffer_type()) && "unsupported buffer type");
 
     if (size == 0) {
@@ -16773,6 +16990,9 @@ static void ggml_backend_vk_get_tensor_async(ggml_backend_t backend, const ggml_
 }
 
 static bool ggml_backend_vk_cpy_tensor_async(ggml_backend_t backend_src, ggml_backend_t backend_dst, const ggml_tensor * src, ggml_tensor * dst) {
+    if (src->type == GGML_TYPE_S24 || dst->type == GGML_TYPE_S24) {
+        return false;
+    }
     VK_LOG_DEBUG("ggml_backend_vk_cpy_tensor_async(" << src << " -> " << dst << ", size=" << ggml_nbytes(src) << ")");
     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend_dst->context;
 
@@ -16913,6 +17133,9 @@ static bool ggml_vk_is_empty(ggml_tensor * node) {
 }
 
 static bool ggml_vk_can_fuse(const ggml_backend_vk_context * ctx, const struct ggml_cgraph * cgraph, int node_idx, std::initializer_list<enum ggml_op> ops) {
+    if (cgraph->nodes[node_idx]->op == GGML_OP_MUL_MAT && cgraph->nodes[node_idx]->src[0]->type == GGML_TYPE_S24) {
+        return false;
+    }
     if (!ggml_can_fuse(cgraph, node_idx, ops)) {
         return false;
     }
@@ -18588,6 +18811,19 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
         return false;
     }
 
+    bool uses_s24 = op->type == GGML_TYPE_S24;
+    for (int i = 0; i < GGML_MAX_SRC; ++i) {
+        uses_s24 = uses_s24 || (op->src[i] && op->src[i]->type == GGML_TYPE_S24);
+    }
+    if (uses_s24) {
+        // Generic copy/concat/view shaders use compact strides, not Direct42.
+        if (op->op == GGML_OP_NONE) {
+            return ggml_vk_s24_shape(op) && ggml_vk_s24_alloc_size(op) <= device->max_buffer_size;
+        }
+        return op->op == GGML_OP_MUL_MAT && op->src[0]->type == GGML_TYPE_S24 &&
+               ggml_vk_s24_supports_mul_mat(device, op);
+    }
+
     switch (op->op) {
         case GGML_OP_UNARY:
             switch (ggml_get_unary_op(op)) {
@@ -18639,6 +18875,9 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
         case GGML_OP_MUL_MAT_ID:
             {
                 ggml_type src0_type = op->src[0]->type;
+                if (src0_type == GGML_TYPE_S24) {
+                    return ggml_vk_s24_supports_mul_mat(device, op);
+                }
                 if (op->op == GGML_OP_MUL_MAT_ID) {
                     if (!device->mul_mat_id_s[src0_type] && !device->mul_mat_id_m[src0_type] && !device->mul_mat_id_l[src0_type]) {
                         // If there's not enough shared memory for row_ids and the result tile, fallback to CPU

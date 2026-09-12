@@ -10,9 +10,11 @@ set(Q4KP_DIR "${PROJECT_SOURCE_DIR}/ggml/src/ggml-cpu/q4kp")
 set(Q4KP_FLAGS -mavx2 -mbmi2 -mfma -mf16c)
 # The ctypes test library links the static backend on ELF platforms.
 set_target_properties(ggml-cpu ggml-base PROPERTIES POSITION_INDEPENDENT_CODE ON)
-add_library(test-q4kp-kernels SHARED oracle.cpp
+add_library(test-q4kp-kernels SHARED oracle.cpp ${Q4KP_DIR}/q4kp_entry.cpp
     ${Q4KP_DIR}/q4kp_kernel.cpp ${Q4KP_DIR}/q4kp_vnni_kernel.cpp
     ${Q4KP_DIR}/q4kp_vnni_gemm.cpp ${Q4KP_DIR}/q4kp_wide_kernel.cpp)
+set_source_files_properties(${Q4KP_DIR}/q4kp_entry.cpp PROPERTIES COMPILE_OPTIONS
+    "-march=x86-64;-mno-avx;-mno-avx2;-mno-bmi2;-mno-fma;-mno-f16c;-mno-avx512f")
 set_target_properties(test-q4kp-kernels PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 add_executable(test-q4kp-runtime test-runtime.cpp)
 foreach(target test-q4kp-kernels test-q4kp-runtime)
@@ -36,7 +38,7 @@ add_test(NAME q4kp-kernels COMMAND "${CMAKE_COMMAND}" -E env
     "Q4KP_TEST_LIBRARY=$<TARGET_FILE:test-q4kp-kernels>"
     "Q4KP_TEST_RUNTIME_DIR=${Q4KP_COMPILER_DIR}"
     "${Python3_EXECUTABLE}" -B -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}" -p "test_q4kp*.py" -v)
-foreach(mode off p6 vnni wide invalid)
+foreach(mode off p6 vnni vnni-original wide invalid)
     add_test(NAME q4kp-runtime-${mode} COMMAND "${CMAKE_COMMAND}" -E env
         "GGML_Q4KP=${mode}" $<TARGET_FILE:test-q4kp-runtime>)
 endforeach()

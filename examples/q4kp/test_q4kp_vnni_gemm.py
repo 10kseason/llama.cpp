@@ -35,14 +35,15 @@ class VNNIGemmTests(unittest.TestCase):
         recoded_before = recoded.copy()
         stride = nc + 3
         outs = [np.full((nr + 2, stride), np.nan, dtype=np.float32)
-                for _ in range(4)]
+                for _ in range(5)]
         for fn, matrix, out in ((self.dll.q4kp_original_gemm, packed, outs[0]),
                                (self.dll.q4kp_gemm, recoded, outs[1]),
                                (self.gemm, recoded, outs[2]),
-                               (self.dll.q4kp_scalar_gemm, packed, outs[3])):
+                               (self.dll.q4kp_scalar_gemm, packed, outs[3]),
+                               (self.dll.q4kp_vnni_original_gemm, packed, outs[4])):
             fn(n, out[1:].ctypes.data, stride, matrix.ctypes.data,
                q8.ctypes.data, nr, nc)
-        for name, out in zip(("P6", "VNNI", "scalar"), outs[1:]):
+        for name, out in zip(("P6", "VNNI", "scalar", "VNNI original"), outs[1:]):
             np.testing.assert_array_equal(out.view(np.uint32), outs[0].view(np.uint32), name)
         self.assertTrue(np.isfinite(outs[2][1:-1, :nc]).all())
         self.assertTrue(np.isnan(outs[2][[0, -1]]).all())
@@ -95,24 +96,6 @@ class VNNIGemmTests(unittest.TestCase):
         values = np.resize(np.array([-128, 127, -1, 1], dtype=np.int8), (20, 2, 256))
         self.compare(512, 20, 16, packed,
                      fixtures.raw_q8x4(values, np.ones((20, 2), dtype=np.float32)))
-
-    def test_invalid_args_leave_output_untouched(self):
-        packed, _ = fixtures.fixtures(256, 8)
-        self.assertEqual(self.dll.q4kp_recode(packed.ctypes.data, packed.nbytes), 0)
-        q8 = fixtures.raw_q8x4(np.ones((4, 1, 256), dtype=np.int8),
-                               np.ones((4, 1), dtype=np.float32))
-        out = np.full(128, 123.5, dtype=np.float32)
-        for n, nr, nc, stride in ((0, 4, 8, 8), (255, 4, 8, 8),
-                                  (256, 0, 8, 8), (256, 3, 8, 8),
-                                  (256, 4, 7, 8), (256, 4, 8, 7)):
-            self.gemm(n, out.ctypes.data, stride, packed.ctypes.data,
-                      q8.ctypes.data, nr, nc)
-            self.assertTrue((out == 123.5).all())
-        for missing in range(3):
-            ptrs = [out.ctypes.data, packed.ctypes.data, q8.ctypes.data]
-            ptrs[missing] = None
-            self.gemm(256, ptrs[0], 8, ptrs[1], ptrs[2], 4, 8)
-            self.assertTrue((out == 123.5).all())
 
 
 if __name__ == "__main__":

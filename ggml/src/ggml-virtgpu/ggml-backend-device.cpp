@@ -30,6 +30,16 @@ static void ggml_backend_remoting_device_get_memory(ggml_backend_dev_t dev, size
 }
 
 static bool ggml_backend_remoting_device_supports_op(ggml_backend_dev_t dev, const ggml_tensor * op) {
+    // The default broad admission path cannot confirm this private type on
+    // the remote device. S24 execution stays on an explicitly supported backend.
+    if (op->type == GGML_TYPE_S24) {
+        return false;
+    }
+    for (int i = 0; i < GGML_MAX_SRC; ++i) {
+        if (op->src[i] != nullptr && op->src[i]->type == GGML_TYPE_S24) {
+            return false;
+        }
+    }
 #if USE_ALWAYS_TRUE_SUPPORTS_OP == 1
     /* ggml-rpc cheats it like this */
     /* with the current implementation of serialize_tensor, the src/view aren't properly passed */

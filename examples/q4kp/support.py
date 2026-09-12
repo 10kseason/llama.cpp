@@ -20,7 +20,8 @@ def library():
     args = [ctypes.c_int, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p,
             ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
     for name in ("q4kp_gemv", "q4kp_gemm", "q4kp_original_gemv", "q4kp_original_gemm",
-                 "q4kp_scalar_gemm", "q4kp_vnni_gemv", "q4kp_wide_gemv"):
+                 "q4kp_scalar_gemm", "q4kp_vnni_gemv", "q4kp_wide_gemv",
+                 "q4kp_vnni_original_gemv", "q4kp_vnni_original_gemm"):
         fn = getattr(dll, name)
         fn.argtypes, fn.restype = args, None
     dll.q4kp_scalar_gemv.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,

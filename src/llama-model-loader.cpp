@@ -37,6 +37,7 @@ const char * llama_ftype_name(llama_ftype ftype) {
         case LLAMA_FTYPE_ALL_F32:          name = LLAMA_FTYPE_PREFIX "all F32"; break;
         case LLAMA_FTYPE_MOSTLY_F16:       name = LLAMA_FTYPE_PREFIX "F16"; break;
         case LLAMA_FTYPE_MOSTLY_BF16:      name = LLAMA_FTYPE_PREFIX "BF16"; break;
+        case LLAMA_FTYPE_MOSTLY_S24:       name = LLAMA_FTYPE_PREFIX "S24 (private experiment)"; break;
         case LLAMA_FTYPE_MOSTLY_Q1_0:      name = LLAMA_FTYPE_PREFIX "Q1_0"; break;
         case LLAMA_FTYPE_MOSTLY_Q2_0:      name = LLAMA_FTYPE_PREFIX "Q2_0"; break;
         case LLAMA_FTYPE_MOSTLY_Q4_0:      name = LLAMA_FTYPE_PREFIX "Q4_0"; break;
@@ -770,6 +771,7 @@ llama_model_loader::llama_model_loader(
             case GGML_TYPE_IQ4_XS:  ftype = LLAMA_FTYPE_MOSTLY_IQ4_XS;  break;
             case GGML_TYPE_IQ3_S:   ftype = LLAMA_FTYPE_MOSTLY_IQ3_S;   break;
             case GGML_TYPE_NVFP4:   ftype = LLAMA_FTYPE_MOSTLY_NVFP4;   break;
+            case GGML_TYPE_S24:     ftype = LLAMA_FTYPE_MOSTLY_S24;     break;
             case GGML_TYPE_Q1_0:    ftype = LLAMA_FTYPE_MOSTLY_Q1_0;    break;
             case GGML_TYPE_Q2_0:    ftype = LLAMA_FTYPE_MOSTLY_Q2_0;    break;
             default:
@@ -1476,7 +1478,12 @@ const void * llama_model_loader::load_data_range(const llama_tensor_weight & w, 
         file->read_raw(buf, size);
     }
 
-    if (check_tensors && !ggml_validate_row_data(w.tensor->type, data, size)) {
+    // S24 support codes are indices used by runtime kernels. Validation is a
+    // load invariant, not an optional diagnostic controlled by check_tensors.
+    if (w.tensor->type == GGML_TYPE_S24 && offs % 39 != 0) {
+        throw std::runtime_error(format("tensor '%s' has an unaligned S24 read", ggml_get_name(w.tensor)));
+    }
+    if ((check_tensors || w.tensor->type == GGML_TYPE_S24) && !ggml_validate_row_data(w.tensor->type, data, size)) {
         throw std::runtime_error(format("tensor '%s' has invalid data", ggml_get_name(w.tensor)));
     }
 
@@ -1492,6 +1499,13 @@ bool llama_model_loader::load_all_data(
     if (files.empty()) {
         for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
             set_tensor_data(t, set_tensor_data_ud);
+            if (t->type == GGML_TYPE_S24) {
+                std::vector<uint8_t> compact(ggml_nbytes(t));
+                ggml_backend_tensor_get(t, compact.data(), 0, compact.size());
+                if (!ggml_validate_row_data(t->type, compact.data(), compact.size())) {
+                    throw std::runtime_error(format("tensor '%s' has invalid S24 data", ggml_get_name(t)));
+                }
+            }
         }
         return true;
     }
@@ -1640,7 +1654,11 @@ bool llama_model_loader::load_all_data(
             }
             uint8_t * data = (uint8_t *) mapping->addr() + weight->offs;
 
-            if (check_tensors) {
+            if (cur->type == GGML_TYPE_S24) {
+                if (!ggml_validate_row_data(cur->type, data, n_size)) {
+                    throw std::runtime_error(format("tensor '%s' has invalid S24 data", ggml_get_name(cur)));
+                }
+            } else if (check_tensors) {
                 validation_result.emplace_back(std::async(std::launch::async, [cur, data, n_size] {
                     return std::make_pair(cur, ggml_validate_row_data(cur->type, data, n_size));
                 }));
@@ -1668,14 +1686,20 @@ bool llama_model_loader::load_all_data(
             if (ggml_backend_buffer_is_host(cur->buffer)) {
                 file->seek(weight->offs, SEEK_SET);
                 file->read_raw(cur->data, n_size);
-                if (check_tensors) {
+                if (cur->type == GGML_TYPE_S24) {
+                    if (!ggml_validate_row_data(cur->type, cur->data, n_size)) {
+                        throw std::runtime_error(format("tensor '%s' has invalid S24 data", ggml_get_name(cur)));
+                    }
+                } else if (check_tensors) {
                     validation_result.emplace_back(std::async(std::launch::async, [cur, n_size] {
                         return std::make_pair(cur, ggml_validate_row_data(cur->type, cur->data, n_size));
                     }));
                 }
             } else {
                 // If upload_backend is valid load the tensor in chunks to pinned memory and upload the buffers asynchronously to the GPU.
-                if (upload_backend) {
+                // S24 upload conversion operates on a complete validated tensor;
+                // generic 1 MiB chunks can split a compact 39-byte block.
+                if (upload_backend && cur->type != GGML_TYPE_S24) {
                     size_t offset = weight->offs;
                     alignment = file->read_alignment();
                     size_t aligned_offset = offset & ~(alignment - 1);
@@ -1732,10 +1756,10 @@ bool llama_model_loader::load_all_data(
                     std::vector<no_init<uint8_t>> read_buf(n_size);
                     file->seek(weight->offs, SEEK_SET);
                     file->read_raw(read_buf.data(), n_size);
-                    ggml_backend_tensor_set(cur, read_buf.data(), 0, n_size);
-                    if (check_tensors && !ggml_validate_row_data(cur->type, read_buf.data(), n_size)) {
+                    if ((check_tensors || cur->type == GGML_TYPE_S24) && !ggml_validate_row_data(cur->type, read_buf.data(), n_size)) {
                         throw std::runtime_error(format("tensor '%s' has invalid data", ggml_get_name(cur)));
                     }
+                    ggml_backend_tensor_set(cur, read_buf.data(), 0, n_size);
                 }
             }
         }

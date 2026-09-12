@@ -20,3 +20,11 @@ These results establish correctness for the tested configuration. The weight blo
 Unrelated upstream MinGW warnings remain in the subprocess helper and benchmark date formatting. The current server UI embedding tool failed with a non-ASCII build path; the documented build uses completion and benchmark tools with server/app disabled. Neither warning-free upstream builds nor server/UI support is claimed here.
 
 Linux PIC requirements were checked in source and addressed for the shared synthetic test library; Linux and Clang execution were not performed. Unsupported ISA fallback was reviewed in source, but no separate machine lacking VNNI was used. This record is not a model accuracy certification or an end-to-end speedup claim. Re-run the tests after source, compiler or CPU changes.
+
+## Checked entries and original-layout VNNI follow-up
+
+The new Release build replaces silent invalid-input returns with checked scalar entries for P6 GEMV/GEMM, VNNI GEMV/GEMM, wide GEMV and both original-layout VNNI entries. The child-process suite exercises 132 invalid calls (dimensions, null/aligned pointers, stride overflow, address wrap and output/input overlap). Every child must exit through the ggml abort callback with an assertion diagnostic; a silent return or access violation fails. This tests `NDEBUG` behavior, not only debug assertions. Actual execution on an unsupported-ISA CPU is not tested on this host.
+
+The numerical fixtures now include `vnni-original` alongside P6 VNNI, original AVX2 and the scalar oracle. The same VNNI arithmetic and accumulation code is instantiated with the two metadata decoders. Runtime graph checks cover both layouts, views, repeated loads and counters. Original-layout uploads must match the original packed bytes exactly and keep the recode counters at zero.
+
+Verification on GCC 15.1, Release `-O3 -DNDEBUG`, fixed AVX2 backend: 7/7 CTest targets passed (18 Python tests plus off/P6/VNNI/original-VNNI/wide/invalid-mode graph runs). Object inspection found no VEX/EVEX vector instructions or PDEP in the scalar entry translation unit. Original-layout GEMV and GEMM contain `vpdpbusd` and no PDEP, while P6 contains both. These results establish a usable ablation path and fail-fast behavior; they do not assign a speed gain to the new mode.

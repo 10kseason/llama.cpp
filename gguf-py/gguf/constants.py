@@ -5523,6 +5523,7 @@ class GGMLQuantizationType(IntEnum):
     NVFP4   = 40
     Q1_0    = 41
     Q2_0    = 42
+    S24     = 63  # private experiment; not an upstream GGUF assignment
 
 
 class ExpertGatingFuncType(IntEnum):
@@ -5715,6 +5716,7 @@ GGML_QUANT_SIZES: dict[GGMLQuantizationType, tuple[int, int]] = {
     GGMLQuantizationType.MXFP4:   (32, 1 + 16),
     GGMLQuantizationType.NVFP4:   (64, 4 + 32),
     GGMLQuantizationType.Q1_0:    (128, 2 + 16),
+    GGMLQuantizationType.S24:     (256, 39),
     GGMLQuantizationType.Q2_0:    (64, 2 + 16),
 }
 

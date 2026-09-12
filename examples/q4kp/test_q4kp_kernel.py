@@ -201,22 +201,6 @@ class Q4KPKernelTests(unittest.TestCase):
         self.assertEqual(guarded[0], 0xA5)
         self.assertEqual(guarded[-1], 0xA5)
 
-    def test_invalid_dimensions_and_null_pointers_do_not_write(self):
-        packed, q8 = fixtures(256, 8)
-        recoded = self.recode(packed)
-        for kind, cases in (("gemv", [(0, 1, 8, 8), (255, 1, 8, 8), (256, 2, 8, 8), (256, 1, 7, 8)]),
-                            ("gemm", [(256, 0, 8, 8), (256, 3, 8, 8), (256, 4, 8, 7), (255, 4, 8, 8)])):
-            fn = getattr(self.dll, "q4kp_" + kind)
-            out = np.full(128, 123.5, dtype=np.float32)
-            for n, nr, nc, stride in cases:
-                fn(n, out.ctypes.data, stride, recoded.ctypes.data, q8.ctypes.data, nr, nc)
-                self.assertTrue((out == 123.5).all())
-            for missing in ("s", "x", "y"):
-                args = {"s": out.ctypes.data, "x": recoded.ctypes.data, "y": q8.ctypes.data}
-                args[missing] = None
-                fn(256, args["s"], 8, args["x"], args["y"], 1 if kind == "gemv" else 4, 8)
-                self.assertTrue((out == 123.5).all())
-
 
 if __name__ == "__main__":
     unittest.main()

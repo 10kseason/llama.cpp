@@ -1,6 +1,7 @@
 // Process-local execution layout derived mechanically from llama.cpp's AVX2 Q4_K
 // 8x8 GEMV/GEMM. PDEP reconstructs the same scale/min bytes; all subsequent
 // integer operations, FP32 multiplication, FMA order and stores are unchanged.
+#include "q4kp_impl.h"
 #include "q4kp_kernel.h"
 #define GGML_COMMON_IMPL_CPP
 #define GGML_COMMON_DECL_CPP
@@ -81,11 +82,7 @@ static inline __m128i q4kp_load_group(const uint8_t *code) {
     return _mm_set_epi64x(static_cast<int64_t>(mins), static_cast<int64_t>(scales));
 }
 
-extern "C" void q4kp_gemv(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
-    if (n <= 0 || n % QK_K != 0 || nc <= 0 || nc % 8 != 0 || nr != 1 ||
-        s == nullptr || vx == nullptr || vy == nullptr) {
-        return;
-    }
+void q4kp_gemv_impl(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;
@@ -279,11 +276,7 @@ extern "C" void q4kp_gemv(int n, float * GGML_RESTRICT s, size_t bs, const void 
 
 }
 
-extern "C" void q4kp_gemm(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
-    if (n <= 0 || n % QK_K != 0 || nc <= 0 || nc % 8 != 0 || nr <= 0 || nr % 4 != 0 || bs < size_t(nc) ||
-        s == nullptr || vx == nullptr || vy == nullptr) {
-        return;
-    }
+void q4kp_gemm_impl(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;

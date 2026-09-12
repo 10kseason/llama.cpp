@@ -6125,6 +6125,16 @@ static ggml_backend_buffer_t ggml_backend_sycl_device_buffer_from_host_ptr(ggml_
 }
 
 static bool do_ggml_backend_sycl_device_supports_op(ggml_backend_dev_t dev, const ggml_tensor * op) {
+    // This fork's S24 codec has no SYCL kernels. Do not let broad operation
+    // checks accept it and fail later in the quantized converter/dispatch.
+    if (op->type == GGML_TYPE_S24) {
+        return false;
+    }
+    for (int i = 0; i < GGML_MAX_SRC; ++i) {
+        if (op->src[i] != nullptr && op->src[i]->type == GGML_TYPE_S24) {
+            return false;
+        }
+    }
     ggml_backend_sycl_device_context *sycl_ctx =
         (ggml_backend_sycl_device_context *)dev->context;
     int device = sycl_ctx->device;

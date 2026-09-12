@@ -24,15 +24,18 @@ extern "C" {
  */
 int q4kp_recode(void *packed, size_t packed_bytes);
 
-/* Caller must check AVX2, BMI2, FMA and F16C and own the recoded layout.
+/* Requires AVX2, BMI2, FMA, F16C and caller ownership of the recoded layout.
  * GEMV: n > 0 divisible by 256, nc > 0 divisible by 8, nr == 1; bs unused.
  * GEMM: same n/nc constraints, nr > 0 divisible by 4, bs >= nc in floats;
  * vy is the original block_q8_Kx4 activation layout, not plain block_q8_K.
  * All pointers must be valid, with disjoint input/output ranges. Invalid basic
- * dimensions or null pointers return without writing. Quant block counts and
- * float output allocations follow the original llama.cpp GEMV/GEMM contracts.
+ * dimensions, pointers, alignment, strides or ISA support abort via GGML_ASSERT
+ * in Release as well as Debug. The scalar entry checks run before ISA code.
+ * Quant block counts and float allocations follow the original llama.cpp contracts.
+ * GEMM vy requires 16-byte alignment; s is float-aligned, vx is FP16-aligned.
  * Standard Q4_K readers MUST NOT consume recoded metadata, including views.
  */
+int q4kp_cpu_supported(void);
 void q4kp_gemv(int n, float *s, size_t bs, const void *vx, const void *vy, int nr, int nc);
 void q4kp_gemm(int n, float *s, size_t bs, const void *vx, const void *vy, int nr, int nc);
 

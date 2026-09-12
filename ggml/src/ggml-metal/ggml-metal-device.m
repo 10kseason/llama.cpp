@@ -1506,6 +1506,16 @@ static bool ggml_metal_supports_mul_mat_op(
 }
 
 bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_tensor * op) {
+    // S24 has no Metal decoder or matrix/get-rows kernels in this fork.
+    // Reject it before the generic F32-activation admission rules.
+    if (op->type == GGML_TYPE_S24) {
+        return false;
+    }
+    for (int i = 0; i < GGML_MAX_SRC; ++i) {
+        if (op->src[i] != NULL && op->src[i]->type == GGML_TYPE_S24) {
+            return false;
+        }
+    }
     const bool has_simdgroup_mm        = dev->props.has_simdgroup_mm;
     const bool has_simdgroup_reduction = dev->props.has_simdgroup_reduction;
     const bool has_bfloat              = dev->props.has_bfloat;

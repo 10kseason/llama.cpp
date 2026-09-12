@@ -3,6 +3,7 @@
 
 #include "ggml-backend.h"
 #include "ggml-impl.h"
+#include "ggml-s24.h"
 #include "ggml-threading.h"
 #include "ggml-cpu.h"
 #include "ggml.h"
@@ -672,6 +673,14 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
         .is_quantized             = false,
         .to_float                 = (ggml_to_float_t) ggml_fp16_to_fp32_row,
         .from_float_ref           = (ggml_from_float_t) ggml_fp32_to_fp16_row,
+    },
+    [GGML_TYPE_S24] = {
+        .type_name                = "s24",
+        .blck_size                = 256,
+        .type_size                = 39,
+        .is_quantized             = true,
+        .to_float                 = dequantize_row_s24,
+        .from_float_ref           = quantize_row_s24_ref,
     },
     [GGML_TYPE_Q1_0] = {
         .type_name                = "q1_0",
@@ -7999,6 +8008,7 @@ size_t ggml_quantize_chunk(
     size_t result = 0;
 
     switch (type) {
+        case GGML_TYPE_S24:     result = quantize_s24(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q1_0:    result = quantize_q1_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q2_0:    result = quantize_q2_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
         case GGML_TYPE_Q4_0:    result = quantize_q4_0   (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;

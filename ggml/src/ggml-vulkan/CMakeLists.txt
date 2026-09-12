@@ -174,6 +174,15 @@ if (Vulkan_FOUND)
         message(STATUS "vulkan-shaders-gen toolchain file: ${HOST_CMAKE_TOOLCHAIN_FILE}")
     endif()
 
+    if (NOT CMAKE_CROSSCOMPILING)
+        # ExternalProject otherwise redetects a different compiler from PATH.
+        list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
+            -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS})
+    endif()
+
     ExternalProject_Add(
         vulkan-shaders-gen
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders
@@ -201,6 +210,9 @@ if (Vulkan_FOUND)
     set (_ggml_vk_input_dir  "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders")
     set (_ggml_vk_output_dir "${CMAKE_CURRENT_BINARY_DIR}/vulkan-shaders.spv")
     set (_ggml_vk_generated_shader_files ${_ggml_vk_header})
+    # Relative argv paths also work with MinGW tools under Unicode checkouts.
+    file(RELATIVE_PATH _ggml_vk_header_arg "${CMAKE_CURRENT_BINARY_DIR}" "${_ggml_vk_header}")
+    file(RELATIVE_PATH _ggml_vk_output_arg "${CMAKE_CURRENT_BINARY_DIR}" "${_ggml_vk_output_dir}")
 
     file(GLOB _ggml_vk_shader_files CONFIGURE_DEPENDS "${_ggml_vk_input_dir}/*.comp")
     set_source_files_properties(${_ggml_vk_shader_files} PROPERTIES HEADER_FILE_ONLY TRUE)
@@ -217,8 +229,9 @@ if (Vulkan_FOUND)
     add_custom_command(
         OUTPUT ${_ggml_vk_header}
         COMMAND ${_ggml_vk_genshaders_cmd}
-            --output-dir ${_ggml_vk_output_dir}
-            --target-hpp ${_ggml_vk_header}
+            --output-dir ${_ggml_vk_output_arg}
+            --target-hpp ${_ggml_vk_header_arg}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_ggml_vk_shaders_gen_sources}
                 vulkan-shaders-gen
         COMMENT "Generate vulkan shaders header"
@@ -228,16 +241,19 @@ if (Vulkan_FOUND)
     foreach (file_full ${_ggml_vk_shader_files})
         get_filename_component(file ${file_full} NAME)
         set (_ggml_vk_target_cpp "${CMAKE_CURRENT_BINARY_DIR}/${file}.cpp")
+        file(RELATIVE_PATH _ggml_vk_source_arg "${CMAKE_CURRENT_BINARY_DIR}" "${file_full}")
+        file(RELATIVE_PATH _ggml_vk_cpp_arg "${CMAKE_CURRENT_BINARY_DIR}" "${_ggml_vk_target_cpp}")
 
         add_custom_command(
             OUTPUT  ${_ggml_vk_target_cpp}
             DEPFILE ${_ggml_vk_target_cpp}.d
             COMMAND ${_ggml_vk_genshaders_cmd}
                 --glslc      ${Vulkan_GLSLC_EXECUTABLE}
-                --source     ${file_full}
-                --output-dir ${_ggml_vk_output_dir}
-                --target-hpp ${_ggml_vk_header}
-                --target-cpp ${_ggml_vk_target_cpp}
+                --source     ${_ggml_vk_source_arg}
+                --output-dir ${_ggml_vk_output_arg}
+                --target-hpp ${_ggml_vk_header_arg}
+                --target-cpp ${_ggml_vk_cpp_arg}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
             DEPENDS ${file_full}
                     ${_ggml_vk_shaders_gen_sources}
                     vulkan-shaders-gen

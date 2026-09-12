@@ -2184,8 +2184,17 @@ static ggml_backend_buffer_type_t ggml_backend_rpc_device_get_buffer_type(ggml_b
 }
 
 static bool ggml_backend_rpc_device_supports_op(ggml_backend_dev_t dev, const struct ggml_tensor * op) {
+    // Type 63 is private to this fork; the remote protocol has no S24
+    // capability negotiation. Keep it local until support can be confirmed.
+    if (op->type == GGML_TYPE_S24) {
+        return false;
+    }
+    for (int i = 0; i < GGML_MAX_SRC; ++i) {
+        if (op->src[i] != nullptr && op->src[i]->type == GGML_TYPE_S24) {
+            return false;
+        }
+    }
     GGML_UNUSED(dev);
-    GGML_UNUSED(op);
     //TODO: call the remote backend and cache the results
     return true;
 }

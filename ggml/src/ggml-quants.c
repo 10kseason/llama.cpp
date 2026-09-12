@@ -2,6 +2,7 @@
 #include "ggml-common.h"
 
 #include "ggml-quants.h"
+#include "ggml-s24.h"
 #include "ggml-impl.h"
 #include "ggml-cpu/ggml-cpu-impl.h"
 #include "ggml-cpu.h"
@@ -5407,11 +5408,20 @@ static bool validate_e_e8m0(uint8_t e, size_t i) {
     }
 
 bool ggml_validate_row_data(enum ggml_type type, const void * data, size_t nbytes) {
+    if (type == GGML_TYPE_S24) {
+        return ggml_s24_validate_compact(data, nbytes);
+    }
     if (type < 0 || type >= GGML_TYPE_COUNT) {
         fprintf(stderr, "%s: invalid type %d\n", __func__, type);
         return false;
     }
 
+    // Private type IDs leave unregistered holes; never divide by a zero size or
+    // pass their null type names to a printf conversion.
+    if (ggml_type_size(type) == 0) {
+        fprintf(stderr, "%s: unregistered type %d\n", __func__, type);
+        return false;
+    }
     if (nbytes % ggml_type_size(type) != 0) {
         fprintf(stderr, "%s: invalid size %zu for type %s (type size = %zu)\n", __func__, nbytes, ggml_type_name(type), ggml_type_size(type));
         return false;

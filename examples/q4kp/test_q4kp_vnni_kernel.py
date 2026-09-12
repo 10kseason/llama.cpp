@@ -21,10 +21,11 @@ class VNNIKernelTests(unittest.TestCase):
         recoded = packed.copy()
         self.assertEqual(self.dll.q4kp_recode(recoded.ctypes.data, recoded.nbytes), 0)
         p6_before = recoded.copy()
-        outs = [np.full(nc + 2, np.nan, dtype=np.float32) for _ in range(4)]
+        outs = [np.full(nc + 2, np.nan, dtype=np.float32) for _ in range(5)]
         for fn, matrix, out in ((self.dll.q4kp_original_gemv, packed, outs[0]),
                                (self.dll.q4kp_gemv, recoded, outs[1]),
-                               (self.dll.q4kp_vnni_gemv, recoded, outs[2])):
+                               (self.dll.q4kp_vnni_gemv, recoded, outs[2]),
+                               (self.dll.q4kp_vnni_original_gemv, packed, outs[4])):
             fn(n, out.ctypes.data + 4, 789, matrix.ctypes.data, q8.ctypes.data, 1, nc)
         self.dll.q4kp_scalar_gemv(n, outs[3].ctypes.data + 4, packed.ctypes.data, q8.ctypes.data, nc)
         for out in outs[1:]:
@@ -64,20 +65,6 @@ class VNNIKernelTests(unittest.TestCase):
         packed[:, :16] = halves.view(np.uint8)
         packed[:, 16:32] = halves[::-1].copy().view(np.uint8)
         self.compare(512, 16, packed, q8)
-
-    def test_invalid_args_leave_output_untouched(self):
-        packed, q8 = fixtures.fixtures(256, 8)
-        self.assertEqual(self.dll.q4kp_recode(packed.ctypes.data, packed.nbytes), 0)
-        for n, nr, nc in ((0, 1, 8), (255, 1, 8), (256, 2, 8), (256, 1, 7)):
-            out = np.full(8, 123.5, dtype=np.float32)
-            self.dll.q4kp_vnni_gemv(n, out.ctypes.data, 0, packed.ctypes.data, q8.ctypes.data, nr, nc)
-            self.assertTrue((out == 123.5).all())
-        for missing in (0, 1, 2):
-            out = np.full(8, 123.5, dtype=np.float32)
-            ptrs = [out.ctypes.data, packed.ctypes.data, q8.ctypes.data]
-            ptrs[missing] = None
-            self.dll.q4kp_vnni_gemv(256, ptrs[0], 0, ptrs[1], ptrs[2], 1, 8)
-            self.assertTrue((out == 123.5).all())
 
 
 if __name__ == "__main__":
