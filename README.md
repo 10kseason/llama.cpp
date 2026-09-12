@@ -1,6 +1,34 @@
-# llama.cpp
+# llama.cpp - Q4KP CPU kernel fork
 
-Fork experiment: [Q4_K P6 / VNNI CPU kernels](examples/q4kp/README.md) - opt-in build, unchanged GGUF files, synthetic correctness tests and maintenance notes.
+**`10kseason/llama.cpp`는 [원본 llama.cpp](https://github.com/ggml-org/llama.cpp)를 기반으로 한 개인 사용·실험·유지보수용 포크입니다.**
+
+기존 GGUF 모델을 그대로 사용하면서 Q4_K CPU 행렬 연산을 개선하는 P6/VNNI 커널을 실험합니다. 추가한 커널은 이 포크에서 관리하며, 원본 프로젝트의 공식 기능이나 배포판으로 소개하지 않습니다.
+
+## 이 포크에 추가한 내용
+
+| 구성 | 용도 |
+| --- | --- |
+| P6 | Q4_K의 스케일·최솟값 메타데이터를 CPU 메모리 안에서 무손실로 재배치 |
+| VNNI | 같은 P6 레이아웃을 사용하는 256비트 AVX-512 VNNI GEMV 커널 |
+| wide | 512비트 GEMV 실험 커널. 행렬 크기와 CPU에 따라 더 느릴 수 있음 |
+| 검증 도구 | 원본 AVX2·스칼라 기준과의 출력 비교, 재배치·뷰·그래프 테스트 |
+
+GGUF 파일이나 양자화된 가중치 값을 바꾸지 않습니다. 빌드 옵션 `GGML_CPU_Q4KP`와 실행 환경 변수 `GGML_Q4KP`로 선택하며, 기본값은 비활성화입니다. 추가한 P6/VNNI/wide 커널은 CPU용입니다.
+
+## 사용법과 검증 범위
+
+- **[커널 빌드·실행 방법](examples/q4kp/README.md)**: 필요한 CPU 명령어, 빌드 옵션, 모드 선택과 테스트 실행 방법
+- **[검증 기록](examples/q4kp/VALIDATION.md)**: Windows GCC에서 CTest 6/6 및 합성 커널 테스트 17/17 통과, 플랫폼별 미검증 사항
+- **[커널 소스](ggml/src/ggml-cpu/q4kp)**: P6, VNNI, wide 구현
+
+커널 출력의 정합성과 모델의 과제 정확도·전체 토큰 생성 속도는 별도로 평가합니다. 모든 환경에서의 속도 향상이나 모델 정확도 보존율을 보장하지 않습니다. 원본 프로젝트가 제공하는 일반 설치 파일에는 이 포크의 추가 커널이 포함되지 않으므로, 사용 시 위 전용 빌드 안내를 기준으로 합니다.
+
+원본 코드의 출처와 [MIT 라이선스](LICENSE)를 유지합니다. 추가 구현·테스트·문서 작성에는 Codex가 참여했습니다.
+
+<details>
+<summary>원본 llama.cpp 프로젝트 안내 보기</summary>
+
+아래 내용과 배포·설치 링크는 원본 프로젝트의 안내입니다. 이 포크의 추가 기능은 위 문서를 참고하세요.
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
 
@@ -126,3 +154,5 @@ The `llama.cpp` project is build on top of the [ggml](https://github.com/ggml-or
 - [nlohmann/json](https://github.com/nlohmann/json) - Single-header JSON library, used by various tools/examples - MIT License
 - [mackron/miniaudio](https://github.com/mackron/miniaudio) - Single-header audio format decoder, used by multimodal subsystem - Public domain
 - [sheredom/subprocess.h](https://github.com/sheredom/subprocess.h) - Single-header process launching solution for C and C++ - Public domain
+
+</details>
